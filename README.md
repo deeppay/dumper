@@ -1,4 +1,5 @@
-# Dumper
+# ![icon](etc/dumper.jpg) Dumper
+
 
 [![Build status](https://travis-ci.org/carldata/dumper.svg?branch=master)](https://travis-ci.org/carldata/dumper)
 
