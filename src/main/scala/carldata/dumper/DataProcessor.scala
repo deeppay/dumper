@@ -20,10 +20,15 @@ object DataProcessor {
   /** Convert data records into SQL Cassandra command */
   def process(messages: Seq[String]): Option[Statement] = {
     val records = messages.flatMap(deserialize)
-    if (records.isEmpty) None
+    if (records.isEmpty) {
+      None
+    }
     else {
       val batch = new BatchStatement()
       records.foreach { m =>
+        println(m.channelId)
+        println(m.timestamp)
+        println(m.value)
         // Build correct insert statement here
         // Update unit tests to cover this code
         val insert = QueryBuilder.insertInto(TABLE_NAME)

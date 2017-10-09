@@ -19,7 +19,7 @@ object MainApp {
   /** How long to wait for new batch of data. In milliseconds */
   val POLL_TIMEOUT = 100
   /** Data topic name */
-  val DATA_TOPIC = "datatest"
+  val DATA_TOPIC = "data"
 
   private val Log = LoggerFactory.getLogger("Dumper")
   private var keepRunning: Boolean = true
@@ -66,7 +66,7 @@ object MainApp {
   def run(kafkaBroker: String, dbExecute: Statement => Boolean): Unit = {
     val kafkaConfig = buildConfig(kafkaBroker)
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
-    consumer.subscribe(List("data").asJava)
+    consumer.subscribe(List(DATA_TOPIC).asJava)
     while (keepRunning) {
       val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
       val dataStmt = DataProcessor.process(getTopicMessages(batch, DATA_TOPIC))
