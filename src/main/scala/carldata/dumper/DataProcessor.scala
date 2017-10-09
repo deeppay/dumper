@@ -1,5 +1,7 @@
 package carldata.dumper
 
+import java.time.ZoneOffset
+
 import carldata.hs.Data.DataRecord
 import com.datastax.driver.core.querybuilder.QueryBuilder
 import com.datastax.driver.core.{BatchStatement, Statement}
@@ -13,7 +15,7 @@ import carldata.hs.Data.DataJsonProtocol._
   */
 object DataProcessor {
 
-  val TABLE_NAME = "testdata"
+  val TABLE_NAME = "datatest"
 
   private val Log = LoggerFactory.getLogger("Dumper.DataProcessor")
 
@@ -26,12 +28,10 @@ object DataProcessor {
     else {
       val batch = new BatchStatement()
       records.foreach { m =>
-        println(m.channelId)
-        println(m.timestamp)
-        println(m.value)
-        // Build correct insert statement here
-        // Update unit tests to cover this code
         val insert = QueryBuilder.insertInto(TABLE_NAME)
+          .value("channel", m.channelId)
+          .value("timestamp", m.timestamp.toInstant(ZoneOffset.UTC).toEpochMilli)
+          .value("value", m.value)
         batch.add(insert)
       }
       Some(batch)
