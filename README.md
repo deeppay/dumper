@@ -12,7 +12,7 @@ Application for storing data from Kafka to Cassandra.
  
  ```bash
 sbt assembly
-java -jar target/scala-2.12/dumper.jar --kafka=localhost::9092
+java -jar target/scala-2.12/dumper.jar --kafka=localhost:9092
  ```
  
 # Redistributing
