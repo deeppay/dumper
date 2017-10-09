@@ -22,6 +22,7 @@ object MainApp {
   val DATA_TOPIC = "datatest"
 
   private val Log = LoggerFactory.getLogger("Dumper")
+  private var keepRunning: Boolean = true
 
   case class Params(kafkaBroker: String, prefix: String)
 
@@ -33,9 +34,9 @@ object MainApp {
   }
 
   /** Kafka configuration */
-  def buildConfig(params: Params): Properties = {
+  def buildConfig(brokers: String): Properties = {
     val props = new Properties()
-    props.put("bootstrap.servers", params.kafkaBroker)
+    props.put("bootstrap.servers", brokers)
     props.put("group.id", "dumper")
     props.put("enable.auto.commit", "false")
     props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
@@ -52,15 +53,33 @@ object MainApp {
   /** Listen to Kafka topics and execute all processing pipelines */
   def main(args: Array[String]): Unit = {
     val params = parseArgs(args)
-    val consumer = new KafkaConsumer[String, String](buildConfig(params))
+    run(params.kafkaBroker, sendToCassandra)
+  }
+
+  /**
+    * Main processing loop:
+    *  - Read batch of data from all topics
+    *  - Split by channel. And for each channel
+    *    - Create db statement
+    *    - Execute statement on db
+    */
+  def run(kafkaBroker: String, dbExecute: Statement => Boolean): Unit = {
+    val kafkaConfig = buildConfig(kafkaBroker)
+    val consumer = new KafkaConsumer[String, String](kafkaConfig)
     consumer.subscribe(List("data").asJava)
-    while (true) {
+    while (keepRunning) {
       val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
       val dataStmt = DataProcessor.process(getTopicMessages(batch, DATA_TOPIC))
-      if(dataStmt.forall(sendToCassandra)) {
+      if(dataStmt.forall(dbExecute)) {
         consumer.commitSync()
       }
     }
+    consumer.close()
+  }
+
+  /** Stop processing and exit application */
+  def stop(): Unit = {
+    keepRunning = false
   }
 
   /**
