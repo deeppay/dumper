@@ -14,4 +14,9 @@ libraryDependencies ++= Seq(
   "net.manub" %% "scalatest-embedded-kafka" % "0.15.1" % "test"
 )
 
+assemblyMergeStrategy in assembly := {
+  case PathList("META-INF", xs @ _*) => MergeStrategy.discard
+  case x => MergeStrategy.first
+}
+
 assemblyJarName in assembly := "dumper.jar"
