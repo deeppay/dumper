@@ -2,7 +2,7 @@ package carldata.dumper
 
 import java.util.Properties
 
-import com.datastax.driver.core.Statement
+import com.datastax.driver.core.{Cluster, Session, Statement}
 import org.apache.kafka.clients.consumer.{ConsumerRecords, KafkaConsumer}
 import org.slf4j.LoggerFactory
 
@@ -24,13 +24,18 @@ object MainApp {
   private val Log = LoggerFactory.getLogger("Dumper")
   private var keepRunning: Boolean = true
 
-  case class Params(kafkaBroker: String, prefix: String)
+  case class Params(kafkaBroker: String, prefix: String,cassandraKeyspace: String, cassandraDB: String){
+    val cassandraUrl = cassandraDB.split(":")(0)
+    val cassandraPort = cassandraDB.split(":")(1).toInt
+  }
 
   /** Command line parser */
   def parseArgs(args: Array[String]): Params = {
     val kafka = args.find(_.contains("--kafka=")).map(_.substring(8)).getOrElse("localhost:9092")
     val prefix = args.find(_.contains("--prefix=")).map(_.substring(9)).getOrElse("")
-    Params(kafka, prefix)
+    val cassandraKeyspace = args.find(_.contains("--keyspace=")).map(_.substring(11)).getOrElse("production")
+    val cassandraDB = args.find(_.contains("--db=")).map(_.substring(5)).getOrElse("localhost:9042")
+    Params(kafka, prefix,cassandraKeyspace, cassandraDB)
   }
 
   /** Kafka configuration */
@@ -53,7 +58,14 @@ object MainApp {
   /** Listen to Kafka topics and execute all processing pipelines */
   def main(args: Array[String]): Unit = {
     val params = parseArgs(args)
-    run(params.kafkaBroker, sendToCassandra)
+    val session = Cluster.builder()
+      .addContactPoint(params.cassandraUrl)
+      .withPort(params.cassandraPort)
+      .build()
+      .connect()
+    session.execute("USE " + params.cassandraKeyspace)
+
+    run(params.kafkaBroker, initDB(session))
   }
 
   /**
@@ -67,10 +79,11 @@ object MainApp {
     val kafkaConfig = buildConfig(kafkaBroker)
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
     consumer.subscribe(List(DATA_TOPIC).asJava)
+
     while (keepRunning) {
       val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
       val dataStmt = DataProcessor.process(getTopicMessages(batch, DATA_TOPIC))
-      if(dataStmt.forall(dbExecute)) {
+      if (dataStmt.forall( dbExecute)) {
         consumer.commitSync()
       }
     }
@@ -84,13 +97,22 @@ object MainApp {
 
   /**
     * Execute given statement on Cassandra driver
+    *
     * @return True if successful
     */
-  def sendToCassandra(stmt: Statement): Boolean = {
-    // Write serialization to the Cassandra here
-    // Remember to wait till Cassandra confirms, that data was ingested before returning
-    // status
-    Log.error("Cassandra not implemented yet")
-    false
+
+  def initDB(session: Session): Statement => Boolean = {
+    stmt => {
+      try {
+        session.execute(stmt)
+        true
+      }
+      catch{
+        case e: Exception => {
+          Log.error("Exception occurred: " + e.toString())
+          false
+        }
+      }
+    }
   }
 }
