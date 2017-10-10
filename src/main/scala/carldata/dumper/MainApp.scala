@@ -65,7 +65,7 @@ object MainApp {
       .connect()
     session.execute("USE " + params.cassandraKeyspace)
 
-    run(params.kafkaBroker, initDB(session))
+    run(params.kafkaBroker,params.prefix, initDB(session))
   }
 
   /**
@@ -75,14 +75,14 @@ object MainApp {
     *    - Create db statement
     *    - Execute statement on db
     */
-  def run(kafkaBroker: String, dbExecute: Statement => Boolean): Unit = {
+  def run(kafkaBroker: String,prefix: String, dbExecute: Statement => Boolean): Unit = {
     val kafkaConfig = buildConfig(kafkaBroker)
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
-    consumer.subscribe(List(DATA_TOPIC).asJava)
+    consumer.subscribe(List(prefix + DATA_TOPIC).asJava)
 
     while (keepRunning) {
       val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
-      val dataStmt = DataProcessor.process(getTopicMessages(batch, DATA_TOPIC))
+      val dataStmt = DataProcessor.process(getTopicMessages(batch, prefix + DATA_TOPIC))
       if (dataStmt.forall( dbExecute)) {
         consumer.commitSync()
       }
