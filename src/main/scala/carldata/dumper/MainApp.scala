@@ -3,7 +3,7 @@ package carldata.dumper
 import java.util.Properties
 
 import com.datastax.driver.core.{Cluster, Session, Statement}
-import org.apache.kafka.clients.consumer.{ConsumerRecords, KafkaConsumer}
+import org.apache.kafka.clients.consumer.{CommitFailedException, ConsumerRecords, KafkaConsumer}
 import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
@@ -24,7 +24,7 @@ object MainApp {
   private val Log = LoggerFactory.getLogger("Dumper")
   private var keepRunning: Boolean = true
 
-  case class Params(kafkaBroker: String, prefix: String,cassandraKeyspace: String, cassandraDB: String){
+  case class Params(kafkaBroker: String, prefix: String, cassandraKeyspace: String, cassandraDB: String) {
     val cassandraUrl = cassandraDB.split(":")(0)
     val cassandraPort = cassandraDB.split(":")(1).toInt
   }
@@ -35,7 +35,7 @@ object MainApp {
     val prefix = args.find(_.contains("--prefix=")).map(_.substring(9)).getOrElse("")
     val cassandraKeyspace = args.find(_.contains("--keyspace=")).map(_.substring(11)).getOrElse("production")
     val cassandraDB = args.find(_.contains("--db=")).map(_.substring(5)).getOrElse("localhost:9042")
-    Params(kafka, prefix,cassandraKeyspace, cassandraDB)
+    Params(kafka, prefix, cassandraKeyspace, cassandraDB)
   }
 
   /** Kafka configuration */
@@ -65,7 +65,7 @@ object MainApp {
       .connect()
     session.execute("USE " + params.cassandraKeyspace)
 
-    run(params.kafkaBroker,params.prefix, initDB(session))
+    run(params.kafkaBroker, params.prefix, initDB(session))
   }
 
   /**
@@ -75,16 +75,21 @@ object MainApp {
     *    - Create db statement
     *    - Execute statement on db
     */
-  def run(kafkaBroker: String,prefix: String, dbExecute: Statement => Boolean): Unit = {
+  def run(kafkaBroker: String, prefix: String, dbExecute: Statement => Boolean): Unit = {
     val kafkaConfig = buildConfig(kafkaBroker)
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
     consumer.subscribe(List(prefix + DATA_TOPIC).asJava)
 
     while (keepRunning) {
-      val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
-      val dataStmt = DataProcessor.process(getTopicMessages(batch, prefix + DATA_TOPIC))
-      if (dataStmt.forall( dbExecute)) {
-        consumer.commitSync()
+      try {
+        val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
+        val dataStmt = DataProcessor.process(getTopicMessages(batch, prefix + DATA_TOPIC))
+        if (dataStmt.forall(dbExecute)) {
+          consumer.commitSync()
+        }
+      }
+      catch {
+        case e: CommitFailedException => Log.warn(e.toString())
       }
     }
     consumer.close()
@@ -107,7 +112,7 @@ object MainApp {
         session.execute(stmt)
         true
       }
-      catch{
+      catch {
         case e: Exception => {
           Log.error("Exception occurred: " + e.toString())
           false

@@ -15,7 +15,7 @@ import carldata.hs.Data.DataJsonProtocol._
   */
 object DataProcessor {
 
-  val TABLE_NAME = "datatest"
+  val TABLE_NAME = "data"
 
   private val Log = LoggerFactory.getLogger("Dumper.DataProcessor")
 
