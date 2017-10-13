@@ -54,7 +54,6 @@ object MainApp {
   def getTopicMessages(batch: ConsumerRecords[String, String], topic: String): Seq[String] =
     batch.records(topic).asScala.map(_.value()).toList
 
-
   /** Listen to Kafka topics and execute all processing pipelines */
   def main(args: Array[String]): Unit = {
     val params = parseArgs(args)
@@ -84,12 +83,16 @@ object MainApp {
       try {
         val startBatchProcessing = System.currentTimeMillis()
         val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
-        val dataStmt = DataProcessor.process(getTopicMessages(batch, prefix + DATA_TOPIC))
+        val records = getTopicMessages(batch, prefix + DATA_TOPIC)
+        val dataStmt = DataProcessor.process(records)
         if (dataStmt.forall(dbExecute)) {
           consumer.commitSync()
           val processingTime = System.currentTimeMillis() - startBatchProcessing
-          val eventsCount = dataStmt.toSeq.length
-          Log.info("eps: " +  1000/(processingTime/eventsCount))
+          val eventsCount = records.length
+          if (eventsCount > 0) {
+            println("eps: " + 1000.0 / (processingTime.toFloat / eventsCount))
+            Log.info("eps: " + 1000.0 / (processingTime.toFloat / eventsCount))
+          }
         }
       }
       catch {
