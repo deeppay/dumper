@@ -82,10 +82,14 @@ object MainApp {
 
     while (keepRunning) {
       try {
+        val startBatchProcessing = System.currentTimeMillis()
         val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
         val dataStmt = DataProcessor.process(getTopicMessages(batch, prefix + DATA_TOPIC))
         if (dataStmt.forall(dbExecute)) {
           consumer.commitSync()
+          val processingTime = System.currentTimeMillis() - startBatchProcessing
+          val eventsCount = dataStmt.toSeq.length
+          Log.info("eps: " +  1000/(processingTime/eventsCount))
         }
       }
       catch {
