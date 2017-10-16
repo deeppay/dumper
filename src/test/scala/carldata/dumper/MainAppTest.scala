@@ -1,8 +1,8 @@
 package carldata.dumper
 
 import com.datastax.driver.core.Statement
-import net.manub.embeddedkafka.EmbeddedKafkaConfig
-import net.manub.embeddedkafka.streams.EmbeddedKafkaStreamsAllInOne
+import net.manub.embeddedkafka.streams.EmbeddedKafkaStreams
+import net.manub.embeddedkafka.{EmbeddedKafka, EmbeddedKafkaConfig}
 import org.apache.kafka.streams.kstream.KStreamBuilder
 import org.scalatest.{FlatSpec, Matchers}
 
@@ -11,30 +11,24 @@ import scala.concurrent.Future
 
 class MainAppTest extends FlatSpec
   with Matchers
-  with EmbeddedKafkaStreamsAllInOne {
-
+  with EmbeddedKafkaStreams {
 
   implicit val config = EmbeddedKafkaConfig(kafkaPort = 9092, zooKeeperPort = 2181)
+
   def test_run(dbExecute: Statement => Boolean, data: Seq[String]): Unit = {
     val streamBuilder = new KStreamBuilder
     streamBuilder.stream(MainApp.DATA_TOPIC)
-
-    runStreams(Seq(MainApp.DATA_TOPIC), streamBuilder) {
-      val main = MainApp
-      Future {
-        data.foreach(d => publishStringMessageToKafka(MainApp.DATA_TOPIC, d))
-        main.run("localhost:9092", "", dbExecute)
-      }
-      Future {
-        consumeNumberStringMessagesFrom(MainApp.DATA_TOPIC, data.size)
-        data.slice(0, data.size).foreach(d => publishStringMessageToKafka(MainApp.DATA_TOPIC, d))
-
-      }
-      Thread.sleep(6000)
+    EmbeddedKafka.start
+    val main = MainApp
+    Future {
+      main.run("localhost:9092", "", dbExecute)
     }
-
+    Thread.sleep(5000)
+    data.foreach(d => publishStringMessageToKafka(MainApp.DATA_TOPIC, d))
     Thread.sleep(2000)
-    MainApp.stop()
+
+    main.stop
+    EmbeddedKafka.stop()
 
 
   }
@@ -48,10 +42,11 @@ class MainAppTest extends FlatSpec
       , "{\"channelId\":\"theia-in-1\",\"timestamp\":\"2017-10-12T13:43:46.060\",\"value\":210.1}"
     )
     var checkList: Array[Boolean] = Array()
+
     def dbExecuter(): Statement => Boolean = {
       stmt => {
         try {
-          checkList=  checkList :+ true
+          checkList = checkList :+ true
           true
         }
         catch {
