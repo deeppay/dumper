@@ -23,7 +23,7 @@ class MainAppTest extends FlatSpec
   def testRun(data: Seq[String]): Seq[Statement] = {
 
     var checkList: ListBuffer[Statement] = ListBuffer()
-    var maxSeconds = 20
+
 
     def dbExecuter(stmt: Statement): Boolean = {
       checkList = checkList += stmt
@@ -38,8 +38,9 @@ class MainAppTest extends FlatSpec
       main.run("localhost:9092", "", dbExecuter)
     }
 
+    var maxSeconds = 20
     while (maxSeconds > 0 && checkList.isEmpty) {
-      publishStringMessageToKafka(MainApp.DATA_TOPIC, "{\"channelId\":\"t\",\"timestamp\":\"2017-10-12T13:43:46.060\",\"value\":0}")
+      publishStringMessageToKafka(MainApp.DATA_TOPIC, """{"channelId":"t","timestamp":"2017-10-12T13:43:46.060","value":0}""")
       Thread.sleep(1000)
       maxSeconds = maxSeconds - 1
     }
@@ -54,7 +55,7 @@ class MainAppTest extends FlatSpec
 
     main.stop()
     EmbeddedKafka.stop
-    checkList
+    checkList.toList
   }
 
   "MainApp" should "read all data from kafka" in {
@@ -66,10 +67,7 @@ class MainAppTest extends FlatSpec
       , DataRecord("test-in-1", LocalDateTime.now.plusSeconds(1), 150.0f)
       , DataRecord("test-in-1", LocalDateTime.now.plusSeconds(1), 160.0f)
     )
-
     val xs = testRun(testData.map(x => DataJsonFormat.write(x).toString()))
-
-
     xs.length shouldEqual testData.size
   }
 
