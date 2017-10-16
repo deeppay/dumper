@@ -11,7 +11,7 @@ libraryDependencies ++= Seq(
   "io.github.carldata" %% "hydra-streams" % "0.4.3",
 
   "org.scalatest" %% "scalatest" % "3.0.1" % "test",
-  "net.manub" %% "scalatest-embedded-kafka" % "0.15.1" % "test"
+  "net.manub" %% "scalatest-embedded-kafka-streams" % "0.15.1" % "test"
 )
 
 assemblyMergeStrategy in assembly := {
