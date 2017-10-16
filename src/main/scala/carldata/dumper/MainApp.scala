@@ -89,9 +89,8 @@ object MainApp {
           consumer.commitSync()
           val processingTime = System.currentTimeMillis() - startBatchProcessing
           val eventsCount = records.length
-          if (eventsCount > 0) {
-            println("eps: " + 1000.0 / (processingTime.toFloat / eventsCount))
-            Log.info("eps: " + 1000.0 / (processingTime.toFloat / eventsCount))
+          if (processingTime > 0 && eventsCount > 0) {
+            Log.info("eps: " + (1000.0 * eventsCount) / processingTime.toFloat)
           }
         }
       }
