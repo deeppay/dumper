@@ -1,11 +1,16 @@
 package carldata.dumper
 
+import java.time.LocalDateTime
+
+import carldata.hs.Data.DataJsonProtocol._
+import carldata.hs.Data.DataRecord
 import com.datastax.driver.core.Statement
 import net.manub.embeddedkafka.streams.EmbeddedKafkaStreams
 import net.manub.embeddedkafka.{EmbeddedKafka, EmbeddedKafkaConfig}
 import org.apache.kafka.streams.kstream.KStreamBuilder
 import org.scalatest.{FlatSpec, Matchers}
 
+import scala.collection.mutable.ListBuffer
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
@@ -13,55 +18,59 @@ class MainAppTest extends FlatSpec
   with Matchers
   with EmbeddedKafkaStreams {
 
-  implicit val config = EmbeddedKafkaConfig(kafkaPort = 9092, zooKeeperPort = 2181)
+  implicit val config: EmbeddedKafkaConfig = EmbeddedKafkaConfig(kafkaPort = 9092, zooKeeperPort = 2181)
 
-  def test_run(dbExecute: Statement => Boolean, data: Seq[String]): Unit = {
+  def testRun(data: Seq[String]): Seq[Statement] = {
+
+    var checkList: ListBuffer[Statement] = ListBuffer()
+    var maxSeconds = 20
+
+    def dbExecuter(stmt: Statement): Boolean = {
+      checkList = checkList += stmt
+      true
+    }
+
     val streamBuilder = new KStreamBuilder
     streamBuilder.stream(MainApp.DATA_TOPIC)
     EmbeddedKafka.start
     val main = MainApp
     Future {
-      main.run("localhost:9092", "", dbExecute)
+      main.run("localhost:9092", "", dbExecuter)
     }
-    Thread.sleep(5000)
+
+    while (maxSeconds > 0 && checkList.isEmpty) {
+      publishStringMessageToKafka(MainApp.DATA_TOPIC, "{\"channelId\":\"t\",\"timestamp\":\"2017-10-12T13:43:46.060\",\"value\":0}")
+      Thread.sleep(1000)
+      maxSeconds = maxSeconds - 1
+    }
+    checkList.clear()
+
     data.foreach(d => publishStringMessageToKafka(MainApp.DATA_TOPIC, d))
-    Thread.sleep(2000)
 
-    main.stop
-    EmbeddedKafka.stop()
+    while (maxSeconds > 0 && checkList.size < data.size) {
+      Thread.sleep(1000)
+      maxSeconds = maxSeconds - 1
+    }
 
-
+    main.stop()
+    EmbeddedKafka.stop
+    checkList
   }
 
   "MainApp" should "read all data from kafka" in {
-    val testData = Seq("{\"channelId\":\"theia-in-1\",\"timestamp\":\"2017-10-12T13:43:46.055\",\"value\":510.0}"
-      , "{\"channelId\":\"theia-in-1\",\"timestamp\":\"2017-10-12T13:43:46.056\",\"value\":420.21}"
-      , "{\"channelId\":\"theia-in-1\",\"timestamp\":\"2017-10-12T13:43:46.057\",\"value\":50.3}"
-      , "{\"channelId\":\"theia-in-1\",\"timestamp\":\"2017-10-12T13:43:46.058\",\"value\":290.2}"
-      , "{\"channelId\":\"theia-in-1\",\"timestamp\":\"2017-10-12T13:43:46.059\",\"value\":670.20}"
-      , "{\"channelId\":\"theia-in-1\",\"timestamp\":\"2017-10-12T13:43:46.060\",\"value\":210.1}"
+    val testData = Seq(DataRecord("test-in-1", LocalDateTime.now, 1.0f)
+      , DataRecord("test-in-1", LocalDateTime.now.plusSeconds(1), 11.0f)
+      , DataRecord("test-in-1", LocalDateTime.now.plusSeconds(1), 120.0f)
+      , DataRecord("test-in-1", LocalDateTime.now.plusSeconds(1), 130.0f)
+      , DataRecord("test-in-1", LocalDateTime.now.plusSeconds(1), 140.0f)
+      , DataRecord("test-in-1", LocalDateTime.now.plusSeconds(1), 150.0f)
+      , DataRecord("test-in-1", LocalDateTime.now.plusSeconds(1), 160.0f)
     )
-    var checkList: Array[Boolean] = Array()
 
-    def dbExecuter(): Statement => Boolean = {
-      stmt => {
-        try {
-          checkList = checkList :+ true
-          true
-        }
-        catch {
-          case e: Exception => {
-            println("Exception occurred: " + e.toString())
-            false
-          }
-        }
-      }
-    }
+    val xs = testRun(testData.map(x => DataJsonFormat.write(x).toString()))
 
-    test_run(dbExecuter(), testData)
-    !checkList.contains(false)
 
-    checkList.length shouldEqual testData.size
+    xs.length shouldEqual testData.size
   }
 
 }
