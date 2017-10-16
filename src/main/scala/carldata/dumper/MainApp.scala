@@ -56,7 +56,6 @@ object MainApp {
 
   /** Listen to Kafka topics and execute all processing pipelines */
   def main(args: Array[String]): Unit = {
-    Log.info("Application started")
     val params = parseArgs(args)
     val session = Cluster.builder()
       .addContactPoint(params.cassandraUrl)
@@ -65,6 +64,7 @@ object MainApp {
       .connect()
     session.execute("USE " + params.cassandraKeyspace)
 
+    Log.info("Application started")
     run(params.kafkaBroker, params.prefix, initDB(session))
   }
 
