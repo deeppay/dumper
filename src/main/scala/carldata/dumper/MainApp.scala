@@ -64,6 +64,7 @@ object MainApp {
       .connect()
     session.execute("USE " + params.cassandraKeyspace)
 
+    Log.info("Application started")
     run(params.kafkaBroker, params.prefix, initDB(session))
   }
 
