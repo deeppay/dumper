@@ -1,10 +1,10 @@
 package carldata.dumper
 
 import java.util.Properties
+import java.util.logging.Logger
 
 import com.datastax.driver.core.{Cluster, Session, Statement}
 import org.apache.kafka.clients.consumer.{CommitFailedException, ConsumerRecords, KafkaConsumer}
-import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
 
@@ -21,12 +21,12 @@ object MainApp {
   /** Data topic name */
   val DATA_TOPIC = "data"
 
-  private val Log = LoggerFactory.getLogger("Dumper")
+  private val Log = Logger.getLogger("Dumper")
   private var keepRunning: Boolean = true
 
   case class Params(kafkaBroker: String, prefix: String, cassandraKeyspace: String, cassandraDB: String) {
-    val cassandraUrl = cassandraDB.split(":")(0)
-    val cassandraPort = cassandraDB.split(":")(1).toInt
+    val cassandraUrl: String = cassandraDB.split(":")(0)
+    val cassandraPort: Int = cassandraDB.split(":")(1).toInt
   }
 
   /** Command line parser */
@@ -54,7 +54,6 @@ object MainApp {
   def getTopicMessages(batch: ConsumerRecords[String, String], topic: String): Seq[String] =
     batch.records(topic).asScala.map(_.value()).toList
 
-
   /** Listen to Kafka topics and execute all processing pipelines */
   def main(args: Array[String]): Unit = {
     val params = parseArgs(args)
@@ -65,6 +64,7 @@ object MainApp {
       .connect()
     session.execute("USE " + params.cassandraKeyspace)
 
+    Log.info("Application started")
     run(params.kafkaBroker, params.prefix, initDB(session))
   }
 
@@ -82,14 +82,21 @@ object MainApp {
 
     while (keepRunning) {
       try {
+        val startBatchProcessing = System.currentTimeMillis()
         val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
-        val dataStmt = DataProcessor.process(getTopicMessages(batch, prefix + DATA_TOPIC))
+        val records = getTopicMessages(batch, prefix + DATA_TOPIC)
+        val dataStmt = DataProcessor.process(records)
         if (dataStmt.forall(dbExecute)) {
           consumer.commitSync()
+          val processingTime = System.currentTimeMillis() - startBatchProcessing
+          val eventsCount = records.length
+          if (processingTime > 0 && eventsCount > 0) {
+            Log.info("eps: " + (1000.0 * eventsCount) / processingTime.toFloat)
+          }
         }
       }
       catch {
-        case e: CommitFailedException => Log.warn(e.toString())
+        case e: CommitFailedException => Log.warning(e.toString)
       }
     }
     consumer.close()
@@ -113,10 +120,9 @@ object MainApp {
         true
       }
       catch {
-        case e: Exception => {
-          Log.error("Exception occurred: " + e.toString())
+        case e: Exception =>
+          Log.severe("Exception occurred: " + e.toString)
           false
-        }
       }
     }
   }

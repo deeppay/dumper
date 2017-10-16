@@ -1,14 +1,14 @@
 package carldata.dumper
 
 import java.time.ZoneOffset
+import java.util.logging.Logger
 
+import carldata.hs.Data.DataJsonProtocol._
 import carldata.hs.Data.DataRecord
 import com.datastax.driver.core.querybuilder.QueryBuilder
 import com.datastax.driver.core.{BatchStatement, Statement}
-import org.slf4j.LoggerFactory
 import spray.json.JsonParser
 import spray.json.JsonParser.ParsingException
-import carldata.hs.Data.DataJsonProtocol._
 
 /**
   * Process data topic
@@ -17,7 +17,7 @@ object DataProcessor {
 
   val TABLE_NAME = "data"
 
-  private val Log = LoggerFactory.getLogger("Dumper.DataProcessor")
+  private val Log = Logger.getLogger("Dumper.DataProcessor")
 
   /** Convert data records into SQL Cassandra command */
   def process(messages: Seq[String]): Option[Statement] = {
@@ -44,7 +44,7 @@ object DataProcessor {
       Some(JsonParser(rec).convertTo[DataRecord])
     } catch {
       case _: ParsingException =>
-        Log.warn("Can't process record: " + rec)
+        Log.warning("Can't process record: " + rec)
         None
     }
   }
