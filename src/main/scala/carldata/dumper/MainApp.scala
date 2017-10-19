@@ -4,7 +4,7 @@ import java.util.Properties
 import java.util.logging.Logger
 
 import com.datastax.driver.core.{Cluster, Session, Statement}
-import com.timgroup.statsd.{NonBlockingStatsDClient, StatsDClient}
+import com.timgroup.statsd.{NonBlockingStatsDClient, ServiceCheck, StatsDClient}
 import org.apache.kafka.clients.consumer.{CommitFailedException, ConsumerRecords, KafkaConsumer}
 
 import scala.collection.JavaConverters._
@@ -30,8 +30,6 @@ object MainApp {
     "localhost",
     8125
   )
-
-  import com.timgroup.statsd.ServiceCheck
 
   val sc: ServiceCheck = ServiceCheck.builder.withName("service.check").withStatus(ServiceCheck.Status.OK).build
 
