@@ -4,6 +4,7 @@ import java.util.Properties
 import java.util.logging.Logger
 
 import com.datastax.driver.core.{Cluster, Session, Statement}
+import com.timgroup.statsd.{NonBlockingStatsDClient, StatsDClient}
 import org.apache.kafka.clients.consumer.{CommitFailedException, ConsumerRecords, KafkaConsumer}
 
 import scala.collection.JavaConverters._
@@ -23,6 +24,16 @@ object MainApp {
 
   private val Log = Logger.getLogger("Dumper")
   private var keepRunning: Boolean = true
+
+  private val statsDCClient: StatsDClient = new NonBlockingStatsDClient(
+    "dumper",
+    "localhost",
+    8125
+  )
+
+  import com.timgroup.statsd.ServiceCheck
+
+  val sc: ServiceCheck = ServiceCheck.builder.withName("service.check").withStatus(ServiceCheck.Status.OK).build
 
   case class Params(kafkaBroker: String, prefix: String, cassandraKeyspace: String, cassandraDB: String) {
     val cassandraUrl: String = cassandraDB.split(":")(0)
@@ -76,6 +87,7 @@ object MainApp {
     *    - Execute statement on db
     */
   def run(kafkaBroker: String, prefix: String, dbExecute: Statement => Boolean): Unit = {
+    statsDCClient.serviceCheck(sc)
     val kafkaConfig = buildConfig(kafkaBroker)
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
     consumer.subscribe(List(prefix + DATA_TOPIC).asJava)
@@ -91,6 +103,7 @@ object MainApp {
           val processingTime = System.currentTimeMillis() - startBatchProcessing
           val eventsCount = records.length
           if (processingTime > 0 && eventsCount > 0) {
+            records.foreach(_ => statsDCClient.incrementCounter("events.passed"))
             Log.info("eps: " + (1000.0 * eventsCount) / processingTime.toFloat)
           }
         }
@@ -100,6 +113,7 @@ object MainApp {
       }
     }
     consumer.close()
+    statsDCClient.stop()
   }
 
   /** Stop processing and exit application */
