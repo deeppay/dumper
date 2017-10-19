@@ -33,7 +33,7 @@ object MainApp {
 
   val sc: ServiceCheck = ServiceCheck.builder.withName("service.check").withStatus(ServiceCheck.Status.OK).build
 
-  case class Params(kafkaBroker: String, prefix: String, cassandraKeyspace: String, cassandraDB: String) {
+  case class Params(kafkaBroker: String, prefix: String, cassandraKeyspace: String, cassandraDB: String, user: String, pass: String) {
     val cassandraUrl: String = cassandraDB.split(":")(0)
     val cassandraPort: Int = cassandraDB.split(":")(1).toInt
   }
@@ -42,9 +42,11 @@ object MainApp {
   def parseArgs(args: Array[String]): Params = {
     val kafka = args.find(_.contains("--kafka=")).map(_.substring(8)).getOrElse("localhost:9092")
     val prefix = args.find(_.contains("--prefix=")).map(_.substring(9)).getOrElse("")
+    val user = args.find(_.contains("--user=")).map(_.substring(7)).getOrElse("")
+    val pass = args.find(_.contains("--pass=")).map(_.substring(7)).getOrElse("")
     val cassandraKeyspace = args.find(_.contains("--keyspace=")).map(_.substring(11)).getOrElse("production")
     val cassandraDB = args.find(_.contains("--db=")).map(_.substring(5)).getOrElse("localhost:9042")
-    Params(kafka, prefix, cassandraKeyspace, cassandraDB)
+    Params(kafka, prefix, cassandraKeyspace, cassandraDB, user, pass)
   }
 
   /** Kafka configuration */
@@ -66,11 +68,16 @@ object MainApp {
   /** Listen to Kafka topics and execute all processing pipelines */
   def main(args: Array[String]): Unit = {
     val params = parseArgs(args)
-    val session = Cluster.builder()
+    val builder = Cluster.builder()
       .addContactPoint(params.cassandraUrl)
       .withPort(params.cassandraPort)
-      .build()
-      .connect()
+
+    if (params.user != "" && params.pass != "") {
+      Log.info("Using username: {} and password: XXXXXXXX" + params.user)
+      builder.withCredentials(params.user, params.user)
+    }
+
+    val session = builder.build().connect()
     session.execute("USE " + params.cassandraKeyspace)
 
     Log.info("Application started")
