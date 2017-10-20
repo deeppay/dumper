@@ -73,8 +73,8 @@ object MainApp {
       .withPort(params.cassandraPort)
 
     if (params.user != "" && params.pass != "") {
-      Log.info("Using username: {} and password: XXXXXXXX" + params.user)
-      builder.withCredentials(params.user, params.user)
+      Log.info("Using username: " + params.user + " and password: " + params.pass)
+      builder.withCredentials(params.user, params.pass)
     }
 
     val session = builder.build().connect()
@@ -102,6 +102,8 @@ object MainApp {
         val startBatchProcessing = System.currentTimeMillis()
         val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
         val records = getTopicMessages(batch, prefix + DATA_TOPIC)
+        if (records.length > 0)
+          Log.info("Records length: " + records.length)
         val dataStmt = DataProcessor.process(records)
         if (dataStmt.forall(dbExecute)) {
           consumer.commitSync()
