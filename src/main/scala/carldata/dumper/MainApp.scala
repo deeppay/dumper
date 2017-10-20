@@ -83,6 +83,7 @@ object MainApp {
 
     Log.info("Application started")
     run(params.kafkaBroker, params.prefix, initDB(session))
+    Log.info("Application Stopped")
   }
 
   /**
@@ -98,15 +99,17 @@ object MainApp {
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
     consumer.subscribe(List(prefix + DATA_TOPIC).asJava)
     Log.info(consumer.toString)
+    Log.info("keepRunning: " + keepRunning)
 
     while (keepRunning) {
       try {
         val startBatchProcessing = System.currentTimeMillis()
+        Log.info("Poll timeout: " + POLL_TIMEOUT)
         val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
         //if (batch.count() > 0)
         Log.info("batch count: " + batch.count())
         val records = getTopicMessages(batch, prefix + DATA_TOPIC)
-        if (records.length > 0)
+        if (records.nonEmpty)
           Log.info("Records length: " + records.length)
         val dataStmt = DataProcessor.process(records)
         if (dataStmt.forall(dbExecute)) {
@@ -121,7 +124,7 @@ object MainApp {
       }
       catch {
         case e: CommitFailedException => Log.warning(e.toString)
-        case e: Exception => Log.warning(e.toString())
+        case e: Exception => Log.warning(e.toString)
       }
     }
     consumer.close()
