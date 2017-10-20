@@ -101,6 +101,8 @@ object MainApp {
       try {
         val startBatchProcessing = System.currentTimeMillis()
         val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
+        if (batch.count() > 0)
+          Log.info("batch count: " + batch.count())
         val records = getTopicMessages(batch, prefix + DATA_TOPIC)
         if (records.length > 0)
           Log.info("Records length: " + records.length)
@@ -117,6 +119,7 @@ object MainApp {
       }
       catch {
         case e: CommitFailedException => Log.warning(e.toString)
+        case e : Exception => Log.warning(e.toString())
       }
     }
     consumer.close()
