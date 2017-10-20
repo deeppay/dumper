@@ -72,8 +72,9 @@ object MainApp {
       .addContactPoint(params.cassandraUrl)
       .withPort(params.cassandraPort)
 
+    Log.info(params.toString)
+
     if (params.user != "" && params.pass != "") {
-      Log.info("Using username: " + params.user + " and password: " + params.pass)
       builder.withCredentials(params.user, params.pass)
     }
 
@@ -96,13 +97,14 @@ object MainApp {
     val kafkaConfig = buildConfig(kafkaBroker)
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
     consumer.subscribe(List(prefix + DATA_TOPIC).asJava)
+    Log.info(consumer.toString)
 
     while (keepRunning) {
       try {
         val startBatchProcessing = System.currentTimeMillis()
         val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
-        if (batch.count() > 0)
-          Log.info("batch count: " + batch.count())
+        //if (batch.count() > 0)
+        Log.info("batch count: " + batch.count())
         val records = getTopicMessages(batch, prefix + DATA_TOPIC)
         if (records.length > 0)
           Log.info("Records length: " + records.length)
@@ -119,7 +121,7 @@ object MainApp {
       }
       catch {
         case e: CommitFailedException => Log.warning(e.toString)
-        case e : Exception => Log.warning(e.toString())
+        case e: Exception => Log.warning(e.toString())
       }
     }
     consumer.close()
