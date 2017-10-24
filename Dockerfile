@@ -8,6 +8,8 @@ ENV Prefix default_prefix
 ENV User default_user
 ENV Password default_pass
 
+ENV StatSD_Host none
+
 WORKDIR /root
 ADD target/scala-2.12/dumper.jar /root/dumper.jar
 ADD entrypoint.sh /root/entrypoint.sh
