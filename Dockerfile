@@ -12,5 +12,6 @@ ENV StatSD_Host none
 
 WORKDIR /root
 ADD target/scala-2.12/dumper.jar /root/dumper.jar
-ADD entrypoint.sh /root/entrypoint.sh
+ADD etc/logback_deployment.xml /root/logback_deployment.xml
+ADD etc/entrypoint.sh /root/entrypoint.sh
 ENTRYPOINT ["/bin/sh","/root/entrypoint.sh"]
