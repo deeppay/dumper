@@ -98,24 +98,19 @@ object MainApp {
     *    - Execute statement on db
     */
   def run(kafkaBroker: String, prefix: String, statsDClient: Option[StatsDClient], dbExecute: Statement => Boolean): Unit = {
-    if (statsDClient.isDefined) statsDClient.get.serviceCheck(sc)
+    statsDClient.map(_.serviceCheck(sc))
     val kafkaConfig = buildConfig(kafkaBroker)
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
     consumer.subscribe(List(prefix + DATA_TOPIC).asJava)
 
     while (keepRunning) {
       try {
-        val startBatchProcessing = System.currentTimeMillis()
         val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
         val records = getTopicMessages(batch, prefix + DATA_TOPIC)
         val dataStmt = DataProcessor.process(records)
         if (dataStmt.forall(dbExecute)) {
           consumer.commitSync()
-          val processingTime = System.currentTimeMillis() - startBatchProcessing
-          val eventsCount = records.length
-          if (statsDClient.isDefined && processingTime > 0 && eventsCount > 0) {
-            records.foreach(_ => statsDClient.get.incrementCounter("events.passed"))
-          }
+          statsDClient.map(sdc => records.foreach(_ => sdc.incrementCounter("events.passed")))
         }
       }
       catch {
@@ -124,7 +119,7 @@ object MainApp {
       }
     }
     consumer.close()
-    if (statsDClient.isDefined) statsDClient.get.stop()
+    statsDClient.map(_.stop())
   }
 
   /** Stop processing and exit application */
