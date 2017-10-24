@@ -26,15 +26,9 @@ object MainApp {
   private val Log = LoggerFactory.getLogger(MainApp.getClass)
   private var keepRunning: Boolean = true
 
-  private val statsDCClient: StatsDClient = new NonBlockingStatsDClient(
-    "dumper",
-    "localhost",
-    8125
-  )
-
   val sc: ServiceCheck = ServiceCheck.builder.withName("service.check").withStatus(ServiceCheck.Status.OK).build
 
-  case class Params(kafkaBroker: String, prefix: String, cassandraKeyspace: String, cassandraDB: String, user: String, pass: String) {
+  case class Params(kafkaBroker: String, prefix: String, cassandraKeyspace: String, cassandraDB: String, user: String, pass: String, statSDHost: String) {
     val cassandraUrl: String = cassandraDB.split(":")(0)
     val cassandraPort: Int = cassandraDB.split(":")(1).toInt
   }
@@ -47,7 +41,8 @@ object MainApp {
     val pass = args.find(_.contains("--pass=")).map(_.substring(7)).getOrElse("")
     val cassandraKeyspace = args.find(_.contains("--keyspace=")).map(_.substring(11)).getOrElse("production")
     val cassandraDB = args.find(_.contains("--db=")).map(_.substring(5)).getOrElse("localhost:9042")
-    Params(kafka, prefix, cassandraKeyspace, cassandraDB, user, pass)
+    val statSDHost = args.find(_.contains("--statSDHost=")).map(_.substring(13)).getOrElse("none")
+    Params(kafka, prefix, cassandraKeyspace, cassandraDB, user, pass, statSDHost)
   }
 
   /** Kafka configuration */
@@ -69,6 +64,16 @@ object MainApp {
   /** Listen to Kafka topics and execute all processing pipelines */
   def main(args: Array[String]): Unit = {
     val params = parseArgs(args)
+    val statsDCClient: Option[StatsDClient] =
+      if (params.statSDHost == "none") None
+      else {
+        Some(
+          new NonBlockingStatsDClient(
+            "dumper",
+            params.statSDHost,
+            8125
+          ))
+      }
     val builder = Cluster.builder()
       .addContactPoint(params.cassandraUrl)
       .withPort(params.cassandraPort)
@@ -81,7 +86,7 @@ object MainApp {
     session.execute("USE " + params.cassandraKeyspace)
 
     Log.info("Application started")
-    run(params.kafkaBroker, params.prefix, initDB(session))
+    run(params.kafkaBroker, params.prefix, statsDCClient, initDB(session))
     Log.info("Application Stopped")
   }
 
@@ -92,8 +97,8 @@ object MainApp {
     *    - Create db statement
     *    - Execute statement on db
     */
-  def run(kafkaBroker: String, prefix: String, dbExecute: Statement => Boolean): Unit = {
-    statsDCClient.serviceCheck(sc)
+  def run(kafkaBroker: String, prefix: String, statsDClient: Option[StatsDClient], dbExecute: Statement => Boolean): Unit = {
+    if (statsDClient.isDefined) statsDClient.get.serviceCheck(sc)
     val kafkaConfig = buildConfig(kafkaBroker)
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
     consumer.subscribe(List(prefix + DATA_TOPIC).asJava)
@@ -108,8 +113,8 @@ object MainApp {
           consumer.commitSync()
           val processingTime = System.currentTimeMillis() - startBatchProcessing
           val eventsCount = records.length
-          if (processingTime > 0 && eventsCount > 0) {
-            records.foreach(_ => statsDCClient.incrementCounter("events.passed"))
+          if (statsDClient.isDefined && processingTime > 0 && eventsCount > 0) {
+            records.foreach(_ => statsDClient.get.incrementCounter("events.passed"))
           }
         }
       }
@@ -119,7 +124,7 @@ object MainApp {
       }
     }
     consumer.close()
-    statsDCClient.stop()
+    if (statsDClient.isDefined) statsDClient.get.stop()
   }
 
   /** Stop processing and exit application */
