@@ -1,7 +1,8 @@
 package carldata.dumper
 
 import java.util.Properties
-import java.util.logging.Logger
+
+import org.slf4j.LoggerFactory
 
 import com.datastax.driver.core.{Cluster, Session, Statement}
 import com.timgroup.statsd.{NonBlockingStatsDClient, ServiceCheck, StatsDClient}
@@ -22,7 +23,7 @@ object MainApp {
   /** Data topic name */
   val DATA_TOPIC = "data"
 
-  private val Log = Logger.getLogger("Dumper")
+  private val Log = LoggerFactory.getLogger(MainApp.getClass)
   private var keepRunning: Boolean = true
 
   private val statsDCClient: StatsDClient = new NonBlockingStatsDClient(
@@ -72,8 +73,6 @@ object MainApp {
       .addContactPoint(params.cassandraUrl)
       .withPort(params.cassandraPort)
 
-    Log.info(params.toString)
-
     if (params.user != "" && params.pass != "") {
       builder.withCredentials(params.user, params.pass)
     }
@@ -98,19 +97,12 @@ object MainApp {
     val kafkaConfig = buildConfig(kafkaBroker)
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
     consumer.subscribe(List(prefix + DATA_TOPIC).asJava)
-    Log.info(consumer.toString)
-    Log.info("keepRunning: " + keepRunning)
 
     while (keepRunning) {
       try {
         val startBatchProcessing = System.currentTimeMillis()
-        Log.info("Poll timeout: " + POLL_TIMEOUT)
         val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
-        //if (batch.count() > 0)
-        Log.info("batch count: " + batch.count())
         val records = getTopicMessages(batch, prefix + DATA_TOPIC)
-        if (records.nonEmpty)
-          Log.info("Records length: " + records.length)
         val dataStmt = DataProcessor.process(records)
         if (dataStmt.forall(dbExecute)) {
           consumer.commitSync()
@@ -118,13 +110,12 @@ object MainApp {
           val eventsCount = records.length
           if (processingTime > 0 && eventsCount > 0) {
             records.foreach(_ => statsDCClient.incrementCounter("events.passed"))
-            Log.info("eps: " + (1000.0 * eventsCount) / processingTime.toFloat)
           }
         }
       }
       catch {
-        case e: CommitFailedException => Log.warning(e.toString)
-        case e: Exception => Log.warning(e.toString)
+        case e: CommitFailedException => Log.warn(e.toString)
+        case e: Exception => Log.error(e.toString)
       }
     }
     consumer.close()
@@ -150,7 +141,7 @@ object MainApp {
       }
       catch {
         case e: Exception =>
-          Log.severe("Exception occurred: " + e.toString)
+          Log.error("Exception occurred: " + e.toString)
           false
       }
     }
