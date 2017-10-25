@@ -3,7 +3,6 @@ package carldata.dumper
 import java.net.InetAddress
 import java.util.Properties
 
-import org.slf4j.LoggerFactory
 import com.datastax.driver.core.{Cluster, Session, Statement}
 import com.timgroup.statsd.{NonBlockingStatsDClient, ServiceCheck, StatsDClient}
 import org.apache.kafka.clients.consumer.{CommitFailedException, ConsumerConfig, ConsumerRecords, KafkaConsumer}
