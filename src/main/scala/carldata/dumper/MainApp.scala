@@ -1,9 +1,9 @@
 package carldata.dumper
 
+import java.net.InetAddress
 import java.util.Properties
 
 import org.slf4j.LoggerFactory
-
 import com.datastax.driver.core.{Cluster, Session, Statement}
 import com.timgroup.statsd.{NonBlockingStatsDClient, ServiceCheck, StatsDClient}
 import org.apache.kafka.clients.consumer.{CommitFailedException, ConsumerRecords, KafkaConsumer}
@@ -28,9 +28,9 @@ object MainApp {
 
   val sc: ServiceCheck = ServiceCheck.builder.withName("service.check").withStatus(ServiceCheck.Status.OK).build
 
-  case class Params(kafkaBroker: String, prefix: String, cassandraKeyspace: String, cassandraDB: String, user: String, pass: String, statSDHost: String) {
-    val cassandraUrl: String = cassandraDB.split(":")(0)
-    val cassandraPort: Int = cassandraDB.split(":")(1).toInt
+  case class Params(kafkaBroker: String, prefix: String, cassandraKeyspace: String, cassandraDB: String, cassandraDBPort: String, user: String, pass: String, statSDHost: String) {
+    val cassandraUrls: Array[InetAddress] = cassandraDB.split(",").map(address => InetAddress.getByName(address))
+    val cassandraPort: Int = cassandraDBPort.toInt
   }
 
   /** Command line parser */
@@ -40,9 +40,10 @@ object MainApp {
     val user = args.find(_.contains("--user=")).map(_.substring(7)).getOrElse("")
     val pass = args.find(_.contains("--pass=")).map(_.substring(7)).getOrElse("")
     val cassandraKeyspace = args.find(_.contains("--keyspace=")).map(_.substring(11)).getOrElse("production")
-    val cassandraDB = args.find(_.contains("--db=")).map(_.substring(5)).getOrElse("localhost:9042")
+    val cassandraDB = args.find(_.contains("--db=")).map(_.substring(5)).getOrElse("localhost")
+    val cassandraDBPort = args.find(_.contains("--dbPort=")).map(_.substring(9)).getOrElse("9042")
     val statSDHost = args.find(_.contains("--statSDHost=")).map(_.substring(13)).getOrElse("none")
-    Params(kafka, prefix, cassandraKeyspace, cassandraDB, user, pass, statSDHost)
+    Params(kafka, prefix, cassandraKeyspace, cassandraDB, cassandraDBPort, user, pass, statSDHost)
   }
 
   /** Kafka configuration */
@@ -75,7 +76,7 @@ object MainApp {
           ))
       }
     val builder = Cluster.builder()
-      .addContactPoint(params.cassandraUrl)
+      .addContactPoints(params.cassandraUrls.toSeq.asJava)
       .withPort(params.cassandraPort)
 
     if (params.user != "" && params.pass != "") {
