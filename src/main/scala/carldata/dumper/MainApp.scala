@@ -6,7 +6,9 @@ import java.util.Properties
 import org.slf4j.LoggerFactory
 import com.datastax.driver.core.{Cluster, Session, Statement}
 import com.timgroup.statsd.{NonBlockingStatsDClient, ServiceCheck, StatsDClient}
-import org.apache.kafka.clients.consumer.{CommitFailedException, ConsumerRecords, KafkaConsumer}
+import org.apache.kafka.clients.consumer.{CommitFailedException, ConsumerConfig, ConsumerRecords, KafkaConsumer}
+import org.apache.kafka.common.serialization.StringDeserializer
+import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
 
@@ -48,13 +50,21 @@ object MainApp {
 
   /** Kafka configuration */
   def buildConfig(brokers: String): Properties = {
+    val strDeserializer = (new StringDeserializer).getClass.getName
     val props = new Properties()
-    props.put("bootstrap.servers", brokers)
-    props.put("group.id", "dumper")
-    props.put("enable.auto.commit", "false")
-    props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
-    props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
+    props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, brokers)
+    props.put(ConsumerConfig.GROUP_ID_CONFIG, "dumper")
+    props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false")
+    props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 100.toString)
+    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, strDeserializer)
+    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, strDeserializer)
     props
+  }
+
+  /** StatsD configuration */
+  def initStatsD(host: String): Option[StatsDClient] = {
+    if (host == "none") None
+    else Some( new NonBlockingStatsDClient("dumper", host, 8125 ))
   }
 
 
@@ -62,19 +72,11 @@ object MainApp {
   def getTopicMessages(batch: ConsumerRecords[String, String], topic: String): Seq[String] =
     batch.records(topic).asScala.map(_.value()).toList
 
+
   /** Listen to Kafka topics and execute all processing pipelines */
   def main(args: Array[String]): Unit = {
     val params = parseArgs(args)
-    val statsDCClient: Option[StatsDClient] =
-      if (params.statSDHost == "none") None
-      else {
-        Some(
-          new NonBlockingStatsDClient(
-            "dumper",
-            params.statSDHost,
-            8125
-          ))
-      }
+    val statsDCClient = initStatsD(params.statSDHost)
     val builder = Cluster.builder()
       .addContactPoints(params.cassandraUrls.asJava)
       .withPort(params.cassandraPort)
@@ -142,7 +144,7 @@ object MainApp {
       }
       catch {
         case e: Exception =>
-          Log.error("Exception occurred: " + e.toString)
+          Log.error(e.toString)
           false
       }
     }
