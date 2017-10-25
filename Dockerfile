@@ -2,7 +2,8 @@ FROM openjdk:jdk-alpine
 
 ENV SCALA_VERSION 2.12.3
 ENV Kafka_Broker localhost:9092
-ENV Cassandra_Address localhost:9042
+ENV Cassandra_Addresses localhost
+ENV Cassandra_Port 9042
 ENV Cassandra_Keyspace default
 ENV Prefix default_prefix
 ENV User default_user
