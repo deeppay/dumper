@@ -30,8 +30,7 @@ object MainApp {
   val sc: ServiceCheck = ServiceCheck.builder.withName("service.check").withStatus(ServiceCheck.Status.OK).build
 
   case class Params(kafkaBroker: String, prefix: String, cassandraKeyspace: String, cassandraUrls: Seq[InetAddress],
-                    cassandraPort: Int, user: String, pass: String, statSDHost: String) {
-  }
+                    cassandraPort: Int, user: String, pass: String, statSDHost: String)
 
   /** Command line parser */
   def parseArgs(args: Array[String]): Params = {
@@ -63,11 +62,11 @@ object MainApp {
   /** StatsD configuration */
   def initStatsD(host: String): Option[StatsDClient] = {
     if (host == "none") None
-    else Some( new NonBlockingStatsDClient("dumper", host, 8125 ))
+    else Some(new NonBlockingStatsDClient("dumper", host, 8125))
   }
 
   /** Init connection to the database */
-  def initDB(params: Params) : Session = {
+  def initDB(params: Params): Session = {
     val builder = Cluster.builder()
       .addContactPoints(params.cassandraUrls.asJava)
       .withPort(params.cassandraPort)
@@ -139,17 +138,15 @@ object MainApp {
     * @return True if successful
     */
 
-  def initDB(session: Session): Statement => Boolean = {
-    stmt => {
-      try {
-        session.execute(stmt)
-        true
-      }
-      catch {
-        case e: Exception =>
-          Log.error(e.toString)
-          false
-      }
+  def initDB(session: Session): Statement => Boolean = { stmt =>
+    try {
+      session.execute(stmt)
+      true
+    }
+    catch {
+      case e: Exception =>
+        Log.error(e.toString)
+        false
     }
   }
 }
