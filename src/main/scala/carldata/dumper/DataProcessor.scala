@@ -17,7 +17,7 @@ object DataProcessor {
 
   val TABLE_NAME = "data"
 
-  private val Log = LoggerFactory.getLogger(DataProcessor.getClass)
+  private val Log = LoggerFactory.getLogger(DataProcessor.getClass.getName)
 
   /** Convert data records into SQL Cassandra command */
   def process(messages: Seq[String]): Option[Statement] = {
@@ -44,7 +44,7 @@ object DataProcessor {
       Some(JsonParser(rec).convertTo[DataRecord])
     } catch {
       case _: ParsingException =>
-        Log.warn("Can't process record: " + rec)
+        Log.error("Can't deserialize data record: " + rec)
         None
     }
   }

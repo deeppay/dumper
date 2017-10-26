@@ -24,7 +24,7 @@ object MainApp {
   /** Data topic name */
   val DATA_TOPIC = "data"
 
-  private val Log = LoggerFactory.getLogger(MainApp.getClass)
+  private val Log = LoggerFactory.getLogger(MainApp.getClass.getName)
   private var keepRunning: Boolean = true
 
   val sc: ServiceCheck = ServiceCheck.builder.withName("service.check").withStatus(ServiceCheck.Status.OK).build
@@ -66,6 +66,18 @@ object MainApp {
     else Some( new NonBlockingStatsDClient("dumper", host, 8125 ))
   }
 
+  /** Init connection to the database */
+  def initDB(params: Params) : Session = {
+    val builder = Cluster.builder()
+      .addContactPoints(params.cassandraUrls.asJava)
+      .withPort(params.cassandraPort)
+
+    if (params.user != "" && params.pass != "") {
+      builder.withCredentials(params.user, params.pass)
+    }
+
+    builder.build().connect()
+  }
 
   /** Extract only messages (skip keys) for given topic */
   def getTopicMessages(batch: ConsumerRecords[String, String], topic: String): Seq[String] =
@@ -76,15 +88,7 @@ object MainApp {
   def main(args: Array[String]): Unit = {
     val params = parseArgs(args)
     val statsDCClient = initStatsD(params.statSDHost)
-    val builder = Cluster.builder()
-      .addContactPoints(params.cassandraUrls.asJava)
-      .withPort(params.cassandraPort)
-
-    if (params.user != "" && params.pass != "") {
-      builder.withCredentials(params.user, params.pass)
-    }
-
-    val session = builder.build().connect()
+    val session = initDB(params)
     session.execute("USE " + params.cassandraKeyspace)
 
     Log.info("Application started")
