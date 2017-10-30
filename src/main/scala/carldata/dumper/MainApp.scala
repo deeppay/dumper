@@ -98,12 +98,11 @@ object MainApp {
   /** Listen to Kafka topics and execute all processing pipelines */
   def main(args: Array[String]): Unit = {
     val params = parseArgs(args)
-    val statsDCClient = initStatsD(params.statSDHost)
     val session = initDB(params)
     session.execute("USE " + params.cassandraKeyspace)
-
+    StatSDWrapper.init("dumper", params.statSDHost)
     Log.info("Application started")
-    run(params.kafkaBroker, params.prefix, statsDCClient, initDB(session))
+    run(params.kafkaBroker, params.prefix, initDB(session))
     Log.info("Application Stopped")
   }
 
@@ -114,7 +113,7 @@ object MainApp {
     *    - Create db statement
     *    - Execute statement on db
     */
-  def run(kafkaBroker: String, prefix: String, statsDClient: Option[StatsDClient], dbExecute: Statement => Boolean): Unit = {
+  def run(kafkaBroker: String, prefix: String, dbExecute: Statement => Boolean): Unit = {
     val kafkaConfig = buildConfig(kafkaBroker)
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
     consumer.subscribe(List(prefix + DATA_TOPIC).asJava)
@@ -126,16 +125,21 @@ object MainApp {
         val dataStmt = DataProcessor.process(records)
         if (dataStmt.forall(dbExecute)) {
           consumer.commitSync()
-          statsDClient.foreach(sdc => records.foreach(_ => sdc.incrementCounter("data.processed")))
+          StatSDWrapper.increment("data.out.count", records.size)
         }
       }
       catch {
-        case e: CommitFailedException => Log.warn(e.toString)
-        case e: Exception => Log.error(e.toString)
+        case e: CommitFailedException => {
+          StatSDWrapper.increment("data.error.commit")
+          Log.warn(e.toString)
+        }
+        case e: Exception => {
+          StatSDWrapper.increment("data.error")
+          Log.error(e.toString)
+        }
       }
     }
     consumer.close()
-    statsDClient.foreach(_.stop())
   }
 
   /** Stop processing and exit application */
