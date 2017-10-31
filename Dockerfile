@@ -9,10 +9,10 @@ ENV Prefix default_prefix
 ENV User default_user
 ENV Password default_pass
 
-ENV StatSD_Host none
+ENV StatsD_Host none
 
 WORKDIR /root
 ADD target/scala-2.12/dumper.jar /root/dumper.jar
-ADD etc/logback_deployment.xml /root/logback_deployment.xml
+ADD etc/gelf.xml /root/gelf.xml
 ADD etc/entrypoint.sh /root/entrypoint.sh
 ENTRYPOINT ["/bin/sh","/root/entrypoint.sh"]

@@ -29,8 +29,8 @@ object MainApp {
   private val Log = LoggerFactory.getLogger(MainApp.getClass.getName)
   private var keepRunning: Boolean = true
 
-  case class Params(kafkaBroker: String, prefix: String, cassandraKeyspace: String, cassandraUrls: Seq[InetAddress],
-                    cassandraPort: Int, user: String, pass: String, statSDHost: String)
+  case class Params(kafkaBroker: String, prefix: String, keyspace: String, cassandraUrls: Seq[InetAddress],
+                    cassandraPort: Int, user: String, pass: String, statsDHost: String)
 
   def stringArg(args: Array[String], key: String, default: String): String = {
     val name = "--" + key + "="
@@ -43,11 +43,11 @@ object MainApp {
     val prefix = stringArg(args, "prefix", "")
     val user = stringArg(args, "user", "")
     val pass = stringArg(args, "pass", "")
-    val cassandraKeyspace = stringArg(args, "keyspace", "production")
+    val keyspace = stringArg(args, "keyspace", "production")
     val cassandraUrls = stringArg(args, "db", "localhost").split(",").map(InetAddress.getByName)
     val cassandraPort = stringArg(args, "dbPort", "9042").toInt
-    val statSDHost = stringArg(args, "statSDHost", "none")
-    Params(kafka, prefix, cassandraKeyspace, cassandraUrls, cassandraPort, user, pass, statSDHost)
+    val statsDHost = stringArg(args, "statsDHost", "none")
+    Params(kafka, prefix, keyspace, cassandraUrls, cassandraPort, user, pass, statsDHost)
   }
 
   /** Kafka configuration */
@@ -99,8 +99,8 @@ object MainApp {
   def main(args: Array[String]): Unit = {
     val params = parseArgs(args)
     val session = initDB(params)
-    session.execute("USE " + params.cassandraKeyspace)
-    StatSDWrapper.init("dumper", params.statSDHost)
+    session.execute("USE " + params.keyspace)
+    StatSDWrapper.init("dumper", params.statsDHost)
     Log.info("Application started")
     run(params.kafkaBroker, params.prefix, initDB(session))
     Log.info("Application Stopped")
@@ -129,14 +129,12 @@ object MainApp {
         }
       }
       catch {
-        case e: CommitFailedException => {
+        case e: CommitFailedException =>
           StatSDWrapper.increment("data.error.commit")
           Log.warn(e.toString)
-        }
-        case e: Exception => {
+        case e: Exception =>
           StatSDWrapper.increment("data.error")
           Log.error(e.toString)
-        }
       }
     }
     consumer.close()
