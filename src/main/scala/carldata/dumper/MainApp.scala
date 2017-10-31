@@ -21,28 +21,32 @@ object MainApp {
 
   /** How long to wait for new batch of data. In milliseconds */
   val POLL_TIMEOUT = 100
+  /** Maximum number of records read by poll function */
+  val MAX_POLL_RECORDS = 100
   /** Data topic name */
   val DATA_TOPIC = "data"
 
   private val Log = LoggerFactory.getLogger(MainApp.getClass.getName)
   private var keepRunning: Boolean = true
 
-  val sc: ServiceCheck = ServiceCheck.builder.withName("service.check").withStatus(ServiceCheck.Status.OK).build
-
   case class Params(kafkaBroker: String, prefix: String, cassandraKeyspace: String, cassandraUrls: Seq[InetAddress],
                     cassandraPort: Int, user: String, pass: String, statSDHost: String)
 
+  def stringArg(args: Array[String], key: String, default: String): String = {
+    val name = "--" + key + "="
+    args.find(_.contains(name)).map(_.substring(name.length)).getOrElse(default).trim
+  }
+
   /** Command line parser */
   def parseArgs(args: Array[String]): Params = {
-    val kafka = args.find(_.contains("--kafka=")).map(_.substring(8)).getOrElse("localhost:9092")
-    val prefix = args.find(_.contains("--prefix=")).map(_.substring(9)).getOrElse("")
-    val user = args.find(_.contains("--user=")).map(_.substring(7)).getOrElse("")
-    val pass = args.find(_.contains("--pass=")).map(_.substring(7)).getOrElse("")
-    val cassandraKeyspace = args.find(_.contains("--keyspace=")).map(_.substring(11)).getOrElse("production")
-    val cassandraUrls = args.find(_.contains("--db=")).map(_.substring(5)).getOrElse("localhost").split(",")
-      .map(address => InetAddress.getByName(address))
-    val cassandraPort = args.find(_.contains("--dbPort=")).map(_.substring(9)).getOrElse("9042").toInt
-    val statSDHost = args.find(_.contains("--statSDHost=")).map(_.substring(13)).getOrElse("none").trim
+    val kafka = stringArg(args, "kafka", "localhost:9092")
+    val prefix = stringArg(args, "prefix", "")
+    val user = stringArg(args, "user", "")
+    val pass = stringArg(args, "pass", "")
+    val cassandraKeyspace = stringArg(args, "keyspace", "production")
+    val cassandraUrls = stringArg(args, "db", "localhost").split(",").map(InetAddress.getByName)
+    val cassandraPort = stringArg(args, "dbPort", "9042").toInt
+    val statSDHost = stringArg(args, "statSDHost", "none")
     Params(kafka, prefix, cassandraKeyspace, cassandraUrls, cassandraPort, user, pass, statSDHost)
   }
 
@@ -53,7 +57,7 @@ object MainApp {
     props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, brokers)
     props.put(ConsumerConfig.GROUP_ID_CONFIG, "dumper")
     props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false")
-    props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 100.toString)
+    props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, MAX_POLL_RECORDS.toString)
     props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, strDeserializer)
     props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, strDeserializer)
     props
@@ -62,7 +66,10 @@ object MainApp {
   /** StatsD configuration */
   def initStatsD(host: String): Option[StatsDClient] = {
     try {
-      Some(new NonBlockingStatsDClient("dumper", host, 8125))
+      val sc: ServiceCheck = ServiceCheck.builder.withName("service.check").withStatus(ServiceCheck.Status.OK).build
+      val client = new NonBlockingStatsDClient("dumper", host, 8125)
+      client.serviceCheck(sc)
+      Some(client)
     }
     catch {
       case e: Exception => Log.warn(e.getMessage)
@@ -91,12 +98,11 @@ object MainApp {
   /** Listen to Kafka topics and execute all processing pipelines */
   def main(args: Array[String]): Unit = {
     val params = parseArgs(args)
-    val statsDCClient = initStatsD(params.statSDHost)
     val session = initDB(params)
     session.execute("USE " + params.cassandraKeyspace)
-
+    StatSDWrapper.init("dumper", params.statSDHost)
     Log.info("Application started")
-    run(params.kafkaBroker, params.prefix, statsDCClient, initDB(session))
+    run(params.kafkaBroker, params.prefix, initDB(session))
     Log.info("Application Stopped")
   }
 
@@ -107,8 +113,7 @@ object MainApp {
     *    - Create db statement
     *    - Execute statement on db
     */
-  def run(kafkaBroker: String, prefix: String, statsDClient: Option[StatsDClient], dbExecute: Statement => Boolean): Unit = {
-    statsDClient.foreach(_.serviceCheck(sc))
+  def run(kafkaBroker: String, prefix: String, dbExecute: Statement => Boolean): Unit = {
     val kafkaConfig = buildConfig(kafkaBroker)
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
     consumer.subscribe(List(prefix + DATA_TOPIC).asJava)
@@ -120,16 +125,21 @@ object MainApp {
         val dataStmt = DataProcessor.process(records)
         if (dataStmt.forall(dbExecute)) {
           consumer.commitSync()
-          statsDClient.foreach(sdc => records.foreach(_ => sdc.incrementCounter("data.processed")))
+          StatSDWrapper.increment("data.out.count", records.size)
         }
       }
       catch {
-        case e: CommitFailedException => Log.warn(e.toString)
-        case e: Exception => Log.error(e.toString)
+        case e: CommitFailedException => {
+          StatSDWrapper.increment("data.error.commit")
+          Log.warn(e.toString)
+        }
+        case e: Exception => {
+          StatSDWrapper.increment("data.error")
+          Log.error(e.toString)
+        }
       }
     }
     consumer.close()
-    statsDClient.foreach(_.stop())
   }
 
   /** Stop processing and exit application */
