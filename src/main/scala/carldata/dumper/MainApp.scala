@@ -26,7 +26,6 @@ object MainApp {
   val DATA_TOPIC = "data"
 
   private val Log = LoggerFactory.getLogger(MainApp.getClass.getName)
-  private var keepRunning: Boolean = true
 
   case class Params(kafkaBroker: String, prefix: String, keyspace: String, cassandraUrls: Seq[InetAddress],
                     cassandraPort: Int, user: String, pass: String, statsDHost: String)
@@ -72,7 +71,7 @@ object MainApp {
       builder.withCredentials(params.user, params.pass)
     }
 
-    builder.build().connect()
+    builder.build().connect(params.keyspace)
   }
 
   /** Extract only messages (skip keys) for given topic */
@@ -83,9 +82,8 @@ object MainApp {
   /** Listen to Kafka topics and execute all processing pipelines */
   def main(args: Array[String]): Unit = {
     val params = parseArgs(args)
-    val session = initDB(params)
-    session.execute("USE " + params.keyspace)
     StatsD.init("dumper", params.statsDHost)
+    val session = initDB(params)
     Log.info("Application started")
     run(params.kafkaBroker, params.prefix, dbExecutor(session))
     Log.info("Application Stopped")
@@ -103,7 +101,7 @@ object MainApp {
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
     consumer.subscribe(List(prefix + DATA_TOPIC).asJava)
 
-    while (keepRunning) {
+    while (true) {
       try {
         val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
         val records = getTopicMessages(batch, prefix + DATA_TOPIC)
@@ -123,11 +121,6 @@ object MainApp {
       }
     }
     consumer.close()
-  }
-
-  /** Stop processing and exit application */
-  def stop(): Unit = {
-    keepRunning = false
   }
 
   /**
