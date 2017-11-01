@@ -3,4 +3,5 @@ target/
 *.iml
 docker_build.sh
 dumper.yml
+dumper.yaml
 *.log

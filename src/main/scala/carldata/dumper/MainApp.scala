@@ -4,7 +4,6 @@ import java.net.InetAddress
 import java.util.Properties
 
 import com.datastax.driver.core.{Cluster, Session, Statement}
-import com.timgroup.statsd.{NonBlockingStatsDClient, ServiceCheck, StatsDClient}
 import org.apache.kafka.clients.consumer.{CommitFailedException, ConsumerConfig, ConsumerRecords, KafkaConsumer}
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.slf4j.LoggerFactory
@@ -63,20 +62,6 @@ object MainApp {
     props
   }
 
-  /** StatsD configuration */
-  def initStatsD(host: String): Option[StatsDClient] = {
-    try {
-      val sc: ServiceCheck = ServiceCheck.builder.withName("service.check").withStatus(ServiceCheck.Status.OK).build
-      val client = new NonBlockingStatsDClient("dumper", host, 8125)
-      client.serviceCheck(sc)
-      Some(client)
-    }
-    catch {
-      case e: Exception => Log.warn(e.getMessage)
-        None
-    }
-  }
-
   /** Init connection to the database */
   def initDB(params: Params): Session = {
     val builder = Cluster.builder()
@@ -100,9 +85,9 @@ object MainApp {
     val params = parseArgs(args)
     val session = initDB(params)
     session.execute("USE " + params.keyspace)
-    StatSDWrapper.init("dumper", params.statsDHost)
+    StatsD.init("dumper", params.statsDHost)
     Log.info("Application started")
-    run(params.kafkaBroker, params.prefix, initDB(session))
+    run(params.kafkaBroker, params.prefix, dbExecutor(session))
     Log.info("Application Stopped")
   }
 
@@ -125,15 +110,15 @@ object MainApp {
         val dataStmt = DataProcessor.process(records)
         if (dataStmt.forall(dbExecute)) {
           consumer.commitSync()
-          StatSDWrapper.increment("data.out.count", records.size)
+          StatsD.increment("data.out.count", records.size)
         }
       }
       catch {
         case e: CommitFailedException =>
-          StatSDWrapper.increment("data.error.commit")
+          StatsD.increment("data.error.commit")
           Log.warn(e.toString)
         case e: Exception =>
-          StatSDWrapper.increment("data.error")
+          StatsD.increment("data.error")
           Log.error(e.toString)
       }
     }
@@ -151,7 +136,7 @@ object MainApp {
     * @return True if successful
     */
 
-  def initDB(session: Session): Statement => Boolean = { stmt =>
+  def dbExecutor(session: Session): Statement => Boolean = { stmt =>
     try {
       session.execute(stmt)
       true

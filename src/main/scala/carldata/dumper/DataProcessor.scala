@@ -42,7 +42,7 @@ object DataProcessor {
       Some(JsonParser(rec).convertTo[DataRecord])
     } catch {
       case _: ParsingException =>
-        StatSDWrapper.increment("data.error.parser")
+        StatsD.increment("data.error.parser")
         Log.error("Can't deserialize data record: " + rec)
         None
     }
