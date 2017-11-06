@@ -4,7 +4,6 @@ import java.net.InetAddress
 import java.util.Properties
 
 import com.datastax.driver.core.{Cluster, Session, Statement}
-import com.timgroup.statsd.{NonBlockingStatsDClient, ServiceCheck, StatsDClient}
 import org.apache.kafka.clients.consumer.{CommitFailedException, ConsumerConfig, ConsumerRecords, KafkaConsumer}
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.slf4j.LoggerFactory
@@ -27,10 +26,9 @@ object MainApp {
   val DATA_TOPIC = "data"
 
   private val Log = LoggerFactory.getLogger(MainApp.getClass.getName)
-  private var keepRunning: Boolean = true
 
-  case class Params(kafkaBroker: String, prefix: String, cassandraKeyspace: String, cassandraUrls: Seq[InetAddress],
-                    cassandraPort: Int, user: String, pass: String, statSDHost: String)
+  case class Params(kafkaBroker: String, prefix: String, keyspace: String, cassandraUrls: Seq[InetAddress],
+                    cassandraPort: Int, user: String, pass: String, statsDHost: String)
 
   def stringArg(args: Array[String], key: String, default: String): String = {
     val name = "--" + key + "="
@@ -43,11 +41,11 @@ object MainApp {
     val prefix = stringArg(args, "prefix", "")
     val user = stringArg(args, "user", "")
     val pass = stringArg(args, "pass", "")
-    val cassandraKeyspace = stringArg(args, "keyspace", "production")
+    val keyspace = stringArg(args, "keyspace", "production")
     val cassandraUrls = stringArg(args, "db", "localhost").split(",").map(InetAddress.getByName)
     val cassandraPort = stringArg(args, "dbPort", "9042").toInt
-    val statSDHost = stringArg(args, "statSDHost", "none")
-    Params(kafka, prefix, cassandraKeyspace, cassandraUrls, cassandraPort, user, pass, statSDHost)
+    val statsDHost = stringArg(args, "statsDHost", "none")
+    Params(kafka, prefix, keyspace, cassandraUrls, cassandraPort, user, pass, statsDHost)
   }
 
   /** Kafka configuration */
@@ -63,20 +61,6 @@ object MainApp {
     props
   }
 
-  /** StatsD configuration */
-  def initStatsD(host: String): Option[StatsDClient] = {
-    try {
-      val sc: ServiceCheck = ServiceCheck.builder.withName("service.check").withStatus(ServiceCheck.Status.OK).build
-      val client = new NonBlockingStatsDClient("dumper", host, 8125)
-      client.serviceCheck(sc)
-      Some(client)
-    }
-    catch {
-      case e: Exception => Log.warn(e.getMessage)
-        None
-    }
-  }
-
   /** Init connection to the database */
   def initDB(params: Params): Session = {
     val builder = Cluster.builder()
@@ -87,7 +71,7 @@ object MainApp {
       builder.withCredentials(params.user, params.pass)
     }
 
-    builder.build().connect()
+    builder.build().connect(params.keyspace)
   }
 
   /** Extract only messages (skip keys) for given topic */
@@ -98,11 +82,10 @@ object MainApp {
   /** Listen to Kafka topics and execute all processing pipelines */
   def main(args: Array[String]): Unit = {
     val params = parseArgs(args)
+    StatsD.init("dumper", params.statsDHost)
     val session = initDB(params)
-    session.execute("USE " + params.cassandraKeyspace)
-    StatSDWrapper.init("dumper", params.statSDHost)
     Log.info("Application started")
-    run(params.kafkaBroker, params.prefix, initDB(session))
+    run(params.kafkaBroker, params.prefix, dbExecutor(session))
     Log.info("Application Stopped")
   }
 
@@ -118,33 +101,26 @@ object MainApp {
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
     consumer.subscribe(List(prefix + DATA_TOPIC).asJava)
 
-    while (keepRunning) {
+    while (true) {
       try {
         val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
         val records = getTopicMessages(batch, prefix + DATA_TOPIC)
         val dataStmt = DataProcessor.process(records)
         if (dataStmt.forall(dbExecute)) {
           consumer.commitSync()
-          StatSDWrapper.increment("data.out.count", records.size)
+          StatsD.increment("data.out.count", records.size)
         }
       }
       catch {
-        case e: CommitFailedException => {
-          StatSDWrapper.increment("data.error.commit")
+        case e: CommitFailedException =>
+          StatsD.increment("data.error.commit")
           Log.warn(e.toString)
-        }
-        case e: Exception => {
-          StatSDWrapper.increment("data.error")
+        case e: Exception =>
+          StatsD.increment("data.error")
           Log.error(e.toString)
-        }
       }
     }
     consumer.close()
-  }
-
-  /** Stop processing and exit application */
-  def stop(): Unit = {
-    keepRunning = false
   }
 
   /**
@@ -153,7 +129,7 @@ object MainApp {
     * @return True if successful
     */
 
-  def initDB(session: Session): Statement => Boolean = { stmt =>
+  def dbExecutor(session: Session): Statement => Boolean = { stmt =>
     try {
       session.execute(stmt)
       true

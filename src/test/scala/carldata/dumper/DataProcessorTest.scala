@@ -2,11 +2,12 @@ package carldata.dumper
 
 import java.time.LocalDateTime
 
-import org.scalatest.{FlatSpec, Matchers}
 import carldata.hs.Data.DataJsonProtocol._
 import carldata.hs.Data.DataRecord
 import com.datastax.driver.core.BatchStatement
+import org.scalatest.{FlatSpec, Matchers}
 import spray.json._
+
 import scala.collection.JavaConverters._
 
 /** Embedded kafka runs on port 6001 */
@@ -22,7 +23,7 @@ class DataProcessorTest extends FlatSpec with Matchers {
     )
 
     val batch = DataProcessor.process(records).get.asInstanceOf[BatchStatement]
-    val result = batch.getStatements().asScala.map(_.toString).toList
+    val result = batch.getStatements.asScala.map(_.toString).toList
     result shouldBe expected
   }
 
