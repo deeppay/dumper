@@ -24,6 +24,8 @@ object MainApp {
   val MAX_POLL_RECORDS = 100
   /** Data topic name */
   val DATA_TOPIC = "data"
+  /** Real time topic name */
+  val REAL_TIME_TOPIC = "hydra-rt"
 
   private val Log = LoggerFactory.getLogger(MainApp.getClass.getName)
 
@@ -99,14 +101,18 @@ object MainApp {
   def run(kafkaBroker: String, prefix: String, dbExecute: Statement => Boolean): Unit = {
     val kafkaConfig = buildConfig(kafkaBroker)
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
-    consumer.subscribe(List(prefix + DATA_TOPIC).asJava)
+    consumer.subscribe(List(prefix + DATA_TOPIC,prefix + REAL_TIME_TOPIC).asJava)
 
     while (true) {
       try {
         val batch: ConsumerRecords[String, String] = consumer.poll(POLL_TIMEOUT)
         val records = getTopicMessages(batch, prefix + DATA_TOPIC)
         val dataStmt = DataProcessor.process(records)
-        if (dataStmt.forall(dbExecute)) {
+
+        val realTimeRecords = getTopicMessages(batch, prefix + REAL_TIME_TOPIC)
+        val realTimeDataStmt = RealTimeProcessor.process(realTimeRecords)
+
+        if ( (dataStmt ++ realTimeDataStmt).forall(dbExecute)) {
           consumer.commitSync()
           StatsD.increment("data.out.count", records.size)
         }
