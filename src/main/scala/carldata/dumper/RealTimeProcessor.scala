@@ -23,7 +23,6 @@ object RealTimeProcessor {
       val batch = new BatchStatement()
       records.foreach(r => {
         if (r.action == AddAction) {
-          println("Adding Job")
           val addJob = QueryBuilder.insertInto(TABLE_NAME)
             .value("calculation", r.calculationId)
             .value("script", r.script)
@@ -31,7 +30,6 @@ object RealTimeProcessor {
             .value("output_channel", r.outputChannelId)
           batch.add(addJob)
         } else if (r.action == RemoveAction) {
-          println("Removing job")
           val removeJob = QueryBuilder.delete().from(TABLE_NAME)
             .where(QueryBuilder.eq("calculation", r.calculationId))
           batch.add(removeJob)
