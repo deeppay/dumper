@@ -18,14 +18,12 @@ object GetChannelsToDelete {
 
   private val Log = LoggerFactory.getLogger(this.getClass)
 
-  def getAllRealTimeJobs() : Statement = {
-     QueryBuilder.select().from(TABLE_NAME)
+  def getAllRealTimeJobs(): Statement = {
+    QueryBuilder.select().from(TABLE_NAME)
   }
 
-  def getDeleteRecords(messages: Seq[String]) : Option[Seq[DeleteDataRecord]] = {
-    val records = messages.flatMap(deserialize)
-    if(records.isEmpty) None
-    else Some(records)
+  def getDeleteRecords(messages: Seq[String]): Seq[DeleteDataRecord] = {
+    messages.flatMap(deserialize)
   }
 
   def deserialize(rec: String): Option[DeleteDataRecord] = {

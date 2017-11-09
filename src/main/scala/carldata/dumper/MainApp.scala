@@ -10,6 +10,7 @@ import org.apache.kafka.common.serialization.StringDeserializer
 import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
+import scala.collection.mutable
 
 
 /**
@@ -27,7 +28,7 @@ object MainApp {
   val DATA_TOPIC = "data"
   /** Real time topic name */
   val REAL_TIME_TOPIC = "hydra-rt"
-  /** Delete data topic*/
+  /** Delete data topic */
   val DELETE_DATA_TOPIC = "delete-data"
 
   private val Log = LoggerFactory.getLogger(MainApp.getClass.getName)
@@ -89,9 +90,9 @@ object MainApp {
     val params = parseArgs(args)
     StatsD.init("dumper", params.statsDHost)
     val session = initDB(params)
-    val manager =  new MappingManager(session)
+    val manager = new MappingManager(session)
     Log.info("Application started")
-    run(params.kafkaBroker, params.prefix, dbExecutor(session), dbQueryExecutor(session),manager)
+    run(params.kafkaBroker, params.prefix, dbExecutor(session), dbQueryExecutor(session), manager)
     Log.info("Application Stopped")
   }
 
@@ -106,7 +107,7 @@ object MainApp {
           manager: MappingManager): Unit = {
     val kafkaConfig = buildConfig(kafkaBroker)
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
-    consumer.subscribe(List(prefix + DATA_TOPIC,prefix + REAL_TIME_TOPIC, prefix + DELETE_DATA_TOPIC).asJava)
+    consumer.subscribe(List(prefix + DATA_TOPIC, prefix + REAL_TIME_TOPIC, prefix + DELETE_DATA_TOPIC).asJava)
 
     while (true) {
       try {
@@ -118,19 +119,30 @@ object MainApp {
         val realTimeDataStmt = RealTimeProcessor.process(realTimeMessages)
 
         //getting info about RealTimeJobs and channels to delete
-        val deleteDataMessages = getTopicMessages(batch,prefix + DELETE_DATA_TOPIC)
+        val deleteDataMessages = getTopicMessages(batch, prefix + DELETE_DATA_TOPIC)
         val deleteDataRecords = GetChannelsToDelete.getDeleteRecords(deleteDataMessages)
 
-        if(deleteDataRecords != None) {
+        var deleteDataStmt: mutable.Buffer[Statement] = mutable.Buffer[Statement]()
+        if (!deleteDataRecords.isEmpty) {
+          println("Delete data records not empty")
           val mapper: Mapper[RealTimeJob] = manager.mapper[RealTimeJob](classOf[RealTimeJob])
           val result = dbQueryExecute(GetChannelsToDelete.getAllRealTimeJobs)
           val realTimeJobs = mapper.map(result).asScala.seq
 
+          deleteDataRecords.foreach(ddr => {
+
+            val channelsToDelete = realTimeJobs.map(rtj => {
+              if (rtj.input_channels.asScala.contains(ddr.channelId))
+                rtj.output_channel
+            }) ++ Seq(ddr.channelId)
+
+            
+
+          })
+
         }
 
-
-
-        if ( (dataStmt ++ realTimeDataStmt).forall(dbExecute)) {
+        if ((dataStmt ++ realTimeDataStmt).forall(dbExecute)) {
           consumer.commitSync()
           StatsD.increment("data.out.count", records.size)
         }
