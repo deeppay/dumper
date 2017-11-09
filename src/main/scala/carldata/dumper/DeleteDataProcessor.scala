@@ -15,20 +15,6 @@ object DeleteDataProcessor {
 
   private val Log = LoggerFactory.getLogger(this.getClass)
 
-  def process(messages: Seq[String]): Option[Statement] = {
-    None
-  }
-
-  def deserialize(rec: String): Option[DeleteDataRecord] = {
-    try{
-      Some(JsonParser(rec).convertTo[DeleteDataRecord])
-    }catch {
-      case _: ParsingException =>
-        Log.error("Can't deserialize delete data record: " + rec)
-        None
-    }
-
-  }
 
 }
 

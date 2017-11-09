@@ -3,7 +3,8 @@ package carldata.dumper
 import java.net.InetAddress
 import java.util.Properties
 
-import com.datastax.driver.core.{Cluster, Session, Statement}
+import com.datastax.driver.core.{Cluster, ResultSet, Session, Statement}
+import com.datastax.driver.mapping.{Mapper, MappingManager, Result}
 import org.apache.kafka.clients.consumer.{CommitFailedException, ConsumerConfig, ConsumerRecords, KafkaConsumer}
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.slf4j.LoggerFactory
@@ -26,6 +27,8 @@ object MainApp {
   val DATA_TOPIC = "data"
   /** Real time topic name */
   val REAL_TIME_TOPIC = "hydra-rt"
+  /** Delete data topic*/
+  val DELETE_DATA_TOPIC = "delete-data"
 
   private val Log = LoggerFactory.getLogger(MainApp.getClass.getName)
 
@@ -86,8 +89,9 @@ object MainApp {
     val params = parseArgs(args)
     StatsD.init("dumper", params.statsDHost)
     val session = initDB(params)
+    val manager =  new MappingManager(session)
     Log.info("Application started")
-    run(params.kafkaBroker, params.prefix, dbExecutor(session))
+    run(params.kafkaBroker, params.prefix, dbExecutor(session), dbQueryExecutor(session),manager)
     Log.info("Application Stopped")
   }
 
@@ -98,10 +102,11 @@ object MainApp {
     *    - Create db statement
     *    - Execute statement on db
     */
-  def run(kafkaBroker: String, prefix: String, dbExecute: Statement => Boolean): Unit = {
+  def run(kafkaBroker: String, prefix: String, dbExecute: Statement => Boolean, dbQueryExecute: Statement => ResultSet,
+          manager: MappingManager): Unit = {
     val kafkaConfig = buildConfig(kafkaBroker)
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
-    consumer.subscribe(List(prefix + DATA_TOPIC,prefix + REAL_TIME_TOPIC).asJava)
+    consumer.subscribe(List(prefix + DATA_TOPIC,prefix + REAL_TIME_TOPIC, prefix + DELETE_DATA_TOPIC).asJava)
 
     while (true) {
       try {
@@ -109,8 +114,21 @@ object MainApp {
         val records = getTopicMessages(batch, prefix + DATA_TOPIC)
         val dataStmt = DataProcessor.process(records)
 
-        val realTimeRecords = getTopicMessages(batch, prefix + REAL_TIME_TOPIC)
-        val realTimeDataStmt = RealTimeProcessor.process(realTimeRecords)
+        val realTimeMessages = getTopicMessages(batch, prefix + REAL_TIME_TOPIC)
+        val realTimeDataStmt = RealTimeProcessor.process(realTimeMessages)
+
+        //getting info about RealTimeJobs and channels to delete
+        val deleteDataMessages = getTopicMessages(batch,prefix + DELETE_DATA_TOPIC)
+        val deleteDataRecords = GetChannelsToDelete.getDeleteRecords(deleteDataMessages)
+
+        if(deleteDataRecords != None) {
+          val mapper: Mapper[RealTimeJob] = manager.mapper[RealTimeJob](classOf[RealTimeJob])
+          val result = dbQueryExecute(GetChannelsToDelete.getAllRealTimeJobs)
+          val realTimeJobs = mapper.map(result).asScala.seq
+
+        }
+
+
 
         if ( (dataStmt ++ realTimeDataStmt).forall(dbExecute)) {
           consumer.commitSync()
@@ -144,6 +162,17 @@ object MainApp {
       case e: Exception =>
         Log.error(e.toString)
         false
+    }
+  }
+
+  def dbQueryExecutor(session: Session): Statement => ResultSet = { stmt =>
+    try {
+      session.execute(stmt)
+    }
+    catch {
+      case e: Exception =>
+        Log.error(e.toString)
+        null
     }
   }
 }
