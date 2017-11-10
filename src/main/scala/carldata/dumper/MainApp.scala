@@ -122,7 +122,8 @@ object MainApp {
         val deleteDataMessages = getTopicMessages(batch, prefix + DELETE_DATA_TOPIC)
         val deleteDataRecords = GetChannelsToDelete.getDeleteRecords(deleteDataMessages)
 
-        var deleteDataStmt: mutable.Buffer[Statement] = mutable.Buffer[Statement]()
+        //val deleteDataStmt: mutable.Buffer[Statement] = mutable.Buffer[Statement]()
+        var deleteDataStmt: Seq[Statement] = Seq[Statement]() //= mutable.Buffer[Statement]()
         if (!deleteDataRecords.isEmpty) {
           println("Delete data records not empty")
           val mapper: Mapper[RealTimeJob] = manager.mapper[RealTimeJob](classOf[RealTimeJob])
@@ -131,18 +132,14 @@ object MainApp {
 
           deleteDataRecords.foreach(ddr => {
 
-            val channelsToDelete = realTimeJobs.map(rtj => {
-              if (rtj.input_channels.asScala.contains(ddr.channelId))
-                rtj.output_channel
-            }) ++ Seq(ddr.channelId)
+            val channelsToDelete = realTimeJobs.filter(rtj => rtj.input_channels.asScala.contains(ddr.channelId))
+              .map(rtj => rtj.output_channel).toSeq ++ Seq(ddr.channelId)
 
-            
-
+            deleteDataStmt ++= DeleteDataProcessor.process(channelsToDelete,ddr.startDate,ddr.endDate)
           })
-
         }
 
-        if ((dataStmt ++ realTimeDataStmt).forall(dbExecute)) {
+        if ((dataStmt ++ realTimeDataStmt ++ deleteDataStmt).forall(dbExecute)) {
           consumer.commitSync()
           StatsD.increment("data.out.count", records.size)
         }
