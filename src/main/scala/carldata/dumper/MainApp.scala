@@ -3,6 +3,7 @@ package carldata.dumper
 import java.net.InetAddress
 import java.util.Properties
 
+import com.datastax.driver.core.querybuilder.QueryBuilder
 import com.datastax.driver.core.{Cluster, ResultSet, Session, Statement}
 import com.datastax.driver.mapping.{Mapper, MappingManager, Result}
 import org.apache.kafka.clients.consumer.{CommitFailedException, ConsumerConfig, ConsumerRecords, KafkaConsumer}
@@ -123,11 +124,11 @@ object MainApp {
         val deleteDataRecords = GetChannelsToDelete.getDeleteRecords(deleteDataMessages)
 
         //val deleteDataStmt: mutable.Buffer[Statement] = mutable.Buffer[Statement]()
-        var deleteDataStmt: Seq[Statement] = Seq[Statement]() //= mutable.Buffer[Statement]()
+        var deleteDataStmt: Seq[Statement] = Seq[Statement]()
         if (!deleteDataRecords.isEmpty) {
-          println("Delete data records not empty")
+          //println("Delete data records not empty")
           val mapper: Mapper[RealTimeJob] = manager.mapper[RealTimeJob](classOf[RealTimeJob])
-          val result = dbQueryExecute(GetChannelsToDelete.getAllRealTimeJobs)
+          val result = dbQueryExecute(QueryBuilder.select().from("real_time_jobs"))
           val realTimeJobs = mapper.map(result).asScala.seq
 
           deleteDataRecords.foreach(ddr => {

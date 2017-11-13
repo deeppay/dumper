@@ -1,16 +1,12 @@
 package carldata.dumper
 
-import java.nio.ByteBuffer
-
 import carldata.hs.DeleteData.DeleteDataJsonProtocol._
 import carldata.hs.DeleteData.DeleteDataRecord
+import com.datastax.driver.core.Statement
 import com.datastax.driver.core.querybuilder.QueryBuilder
-import com.datastax.driver.core.{BatchStatement, ProtocolVersion, Statement}
 import org.slf4j.LoggerFactory
 import spray.json.JsonParser
 import spray.json.JsonParser.ParsingException
-
-import scala.collection.JavaConverters._
 
 object GetChannelsToDelete {
 
