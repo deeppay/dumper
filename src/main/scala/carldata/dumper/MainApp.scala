@@ -4,14 +4,13 @@ import java.net.InetAddress
 import java.util.Properties
 
 import com.datastax.driver.core.querybuilder.QueryBuilder
-import com.datastax.driver.core.{Cluster, ResultSet, Session, Statement}
-import com.datastax.driver.mapping.{Mapper, MappingManager, Result}
+import com.datastax.driver.core._
+import com.datastax.driver.mapping.{Mapper, MappingManager}
 import org.apache.kafka.clients.consumer.{CommitFailedException, ConsumerConfig, ConsumerRecords, KafkaConsumer}
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
-import scala.collection.mutable
 
 
 /**
@@ -123,21 +122,25 @@ object MainApp {
         val deleteDataMessages = getTopicMessages(batch, prefix + DELETE_DATA_TOPIC)
         val deleteDataRecords = GetChannelsToDelete.getDeleteRecords(deleteDataMessages)
 
-        //val deleteDataStmt: mutable.Buffer[Statement] = mutable.Buffer[Statement]()
         var deleteDataStmt: Seq[Statement] = Seq[Statement]()
         if (!deleteDataRecords.isEmpty) {
-          //println("Delete data records not empty")
           val mapper: Mapper[RealTimeJob] = manager.mapper[RealTimeJob](classOf[RealTimeJob])
           val result = dbQueryExecute(QueryBuilder.select().from("real_time_jobs"))
           val realTimeJobs = mapper.map(result).asScala.seq
 
           deleteDataRecords.foreach(ddr => {
+            val channelsToDelete = realTimeJobs.flatMap(rtj => {
+              if (rtj.input_channels.asScala.contains(ddr.channelId))
+                Some(rtj.output_channel)
+              else
+                None
+            }).toSeq ++ Seq(ddr.channelId)
 
-            val channelsToDelete = realTimeJobs.filter(rtj => rtj.input_channels.asScala.contains(ddr.channelId))
-              .map(rtj => rtj.output_channel).toSeq ++ Seq(ddr.channelId)
-
-            deleteDataStmt ++= DeleteDataProcessor.process(channelsToDelete,ddr.startDate,ddr.endDate)
+            deleteDataStmt ++= DeleteDataProcessor.process(channelsToDelete, ddr.startDate, ddr.endDate)
           })
+
+          println("delete data statements: ")
+          deleteDataStmt.foreach(b => b.asInstanceOf[BatchStatement].getStatements.asScala.foreach(s => println(s.toString)))
         }
 
         if ((dataStmt ++ realTimeDataStmt ++ deleteDataStmt).forall(dbExecute)) {

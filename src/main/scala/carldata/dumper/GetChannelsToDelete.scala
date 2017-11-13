@@ -10,13 +10,7 @@ import spray.json.JsonParser.ParsingException
 
 object GetChannelsToDelete {
 
-  val TABLE_NAME = "real_time_jobs"
-
   private val Log = LoggerFactory.getLogger(this.getClass)
-
-  def getAllRealTimeJobs(): Statement = {
-    QueryBuilder.select().from(TABLE_NAME)
-  }
 
   def getDeleteRecords(messages: Seq[String]): Seq[DeleteDataRecord] = {
     messages.flatMap(deserialize)
