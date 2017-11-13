@@ -129,18 +129,14 @@ object MainApp {
           val realTimeJobs = mapper.map(result).asScala.seq
 
           deleteDataRecords.foreach(ddr => {
-            val channelsToDelete = realTimeJobs.flatMap(rtj => {
-              if (rtj.input_channels.asScala.contains(ddr.channelId))
-                Some(rtj.output_channel)
-              else
-                None
-            }).toSeq ++ Seq(ddr.channelId)
+           val channelsToDelete = realTimeJobs.toSeq.filter(rtj => rtj.input_channels.asScala.contains(ddr.channelId))
+              .map(rtj => rtj.output_channel) ++ Seq(ddr.channelId)
 
             deleteDataStmt ++= DeleteDataProcessor.process(channelsToDelete, ddr.startDate, ddr.endDate)
           })
 
-          println("delete data statements: ")
-          deleteDataStmt.foreach(b => b.asInstanceOf[BatchStatement].getStatements.asScala.foreach(s => println(s.toString)))
+          //println("delete data statements: ")
+          //deleteDataStmt.foreach(b => b.asInstanceOf[BatchStatement].getStatements.asScala.foreach(s => println(s.toString)))
         }
 
         if ((dataStmt ++ realTimeDataStmt ++ deleteDataStmt).forall(dbExecute)) {
