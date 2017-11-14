@@ -90,9 +90,9 @@ object MainApp {
     val params = parseArgs(args)
     StatsD.init("dumper", params.statsDHost)
     val session = initDB(params)
-    val manager = new MappingManager(session)
+    //val manager = new MappingManager(session)
     Log.info("Application started")
-    run(params.kafkaBroker, params.prefix, dbExecutor(session), dbQueryExecutor(session), manager)
+    run(params.kafkaBroker, params.prefix, dbExecutor(session), dbQueryExecutor(session))
     Log.info("Application Stopped")
   }
 
@@ -103,11 +103,11 @@ object MainApp {
     *    - Create db statement
     *    - Execute statement on db
     */
-  def run(kafkaBroker: String, prefix: String, dbExecute: Statement => Boolean, dbQueryExecute: Statement => ResultSet,
-          manager: MappingManager): Unit = {
+  def run(kafkaBroker: String, prefix: String, dbExecute: Statement => Boolean, dbQueryExecute: Statement => Seq[RealTimeJob]
+         ): Unit = {
     val kafkaConfig = buildConfig(kafkaBroker)
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
-    consumer.subscribe(List(prefix + DATA_TOPIC, prefix + REAL_TIME_TOPIC, prefix + DELETE_DATA_TOPIC).asJava)
+    consumer.subscribe(List(DATA_TOPIC, REAL_TIME_TOPIC, DELETE_DATA_TOPIC).map(t => prefix + t).asJava)
 
     while (true) {
       try {
@@ -120,23 +120,23 @@ object MainApp {
 
         //getting info about RealTimeJobs and channels to delete
         val deleteDataMessages = getTopicMessages(batch, prefix + DELETE_DATA_TOPIC)
-        val deleteDataRecords = GetChannelsToDelete.getDeleteRecords(deleteDataMessages)
+        val deleteDataRecords = DeleteDataProcessor.getDeleteRecords(deleteDataMessages)
 
         var deleteDataStmt: Seq[Statement] = Seq[Statement]()
-        if (!deleteDataRecords.isEmpty) {
-          val mapper: Mapper[RealTimeJob] = manager.mapper[RealTimeJob](classOf[RealTimeJob])
-          val result = dbQueryExecute(QueryBuilder.select().from("real_time_jobs"))
-          val realTimeJobs = mapper.map(result).asScala.seq
+        if (deleteDataRecords.nonEmpty) {
+          val realTimeJobs = dbQueryExecute(QueryBuilder.select().from("real_time_jobs"))
 
           deleteDataRecords.foreach(ddr => {
-           val channelsToDelete = realTimeJobs.toSeq.filter(rtj => rtj.input_channels.asScala.contains(ddr.channelId))
+
+            val channelsToDelete = realTimeJobs
+              .filter(rtj => rtj.input_channels.asScala.contains(ddr.channelId))
               .map(rtj => rtj.output_channel) ++ Seq(ddr.channelId)
 
             deleteDataStmt ++= DeleteDataProcessor.process(channelsToDelete, ddr.startDate, ddr.endDate)
           })
 
-          //println("delete data statements: ")
-          //deleteDataStmt.foreach(b => b.asInstanceOf[BatchStatement].getStatements.asScala.foreach(s => println(s.toString)))
+          println("delete data statements: ")
+          deleteDataStmt.foreach(b => b.asInstanceOf[BatchStatement].getStatements.asScala.foreach(s => println(s.toString)))
         }
 
         if ((dataStmt ++ realTimeDataStmt ++ deleteDataStmt).forall(dbExecute)) {
@@ -174,9 +174,12 @@ object MainApp {
     }
   }
 
-  def dbQueryExecutor(session: Session): Statement => ResultSet = { stmt =>
+  def dbQueryExecutor(session: Session): Statement => Seq[RealTimeJob] = { stmt =>
     try {
-      session.execute(stmt)
+      val manager = new MappingManager(session)
+      val mapper: Mapper[RealTimeJob] = manager.mapper[RealTimeJob](classOf[RealTimeJob])
+      val result = session.execute(stmt)
+      mapper.map(result).asScala.toSeq
     }
     catch {
       case e: Exception =>

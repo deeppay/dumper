@@ -10,13 +10,16 @@ import org.slf4j.LoggerFactory
 import spray.json.JsonParser
 import spray.json.JsonParser.ParsingException
 
-import scala.collection.JavaConverters._
-
 object DeleteDataProcessor {
 
   val TABLE_NAME = "data"
 
   private val Log = LoggerFactory.getLogger(this.getClass)
+
+  def processDeleteDataRecords(messages: Seq[String]): Option[Statement] = {
+    val deleteDataRecords = getDeleteRecords(messages)
+    None
+  }
 
   def process(channels: Seq[String], startDate: LocalDateTime, endDate: LocalDateTime): Option[Statement] ={
     if(channels.isEmpty)
@@ -31,6 +34,20 @@ object DeleteDataProcessor {
         batch.add(deleteStmt)
       }
       Some(batch)
+    }
+  }
+
+  def getDeleteRecords(messages: Seq[String]): Seq[DeleteDataRecord] = {
+    messages.flatMap(deserialize)
+  }
+
+  def deserialize(rec: String): Option[DeleteDataRecord] = {
+    try {
+      Some(JsonParser(rec).convertTo[DeleteDataRecord])
+    } catch {
+      case _: ParsingException =>
+        Log.error("Can't deserialize delete data record: " + rec)
+        None
     }
   }
 
