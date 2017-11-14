@@ -120,23 +120,10 @@ object MainApp {
 
         //getting info about RealTimeJobs and channels to delete
         val deleteDataMessages = getTopicMessages(batch, prefix + DELETE_DATA_TOPIC)
-        val deleteDataRecords = DeleteDataProcessor.getDeleteRecords(deleteDataMessages)
-
-        var deleteDataStmt: Seq[Statement] = Seq[Statement]()
-        if (deleteDataRecords.nonEmpty) {
+        var deleteDataStmt = Seq[Statement]()
+        if(deleteDataMessages.nonEmpty) {
           val realTimeJobs = dbQueryExecute(QueryBuilder.select().from("real_time_jobs"))
-
-          deleteDataRecords.foreach(ddr => {
-
-            val channelsToDelete = realTimeJobs
-              .filter(rtj => rtj.input_channels.asScala.contains(ddr.channelId))
-              .map(rtj => rtj.output_channel) ++ Seq(ddr.channelId)
-
-            deleteDataStmt ++= DeleteDataProcessor.process(channelsToDelete, ddr.startDate, ddr.endDate)
-          })
-
-          println("delete data statements: ")
-          deleteDataStmt.foreach(b => b.asInstanceOf[BatchStatement].getStatements.asScala.foreach(s => println(s.toString)))
+          deleteDataStmt = DeleteDataProcessor.processDeleteDataMessages(deleteDataMessages, realTimeJobs).toSeq.flatten
         }
 
         if ((dataStmt ++ realTimeDataStmt ++ deleteDataStmt).forall(dbExecute)) {

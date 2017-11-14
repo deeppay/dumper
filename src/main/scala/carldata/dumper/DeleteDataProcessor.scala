@@ -9,6 +9,7 @@ import com.datastax.driver.core.{BatchStatement, Statement}
 import org.slf4j.LoggerFactory
 import spray.json.JsonParser
 import spray.json.JsonParser.ParsingException
+import scala.collection.JavaConverters._
 
 object DeleteDataProcessor {
 
@@ -16,9 +17,25 @@ object DeleteDataProcessor {
 
   private val Log = LoggerFactory.getLogger(this.getClass)
 
-  def processDeleteDataRecords(messages: Seq[String]): Option[Statement] = {
+  def processDeleteDataMessages(messages: Seq[String], realTimeJobs: Seq[RealTimeJob] ): Option[Seq[Statement]] = {
     val deleteDataRecords = getDeleteRecords(messages)
-    None
+
+    if(deleteDataRecords.nonEmpty){
+      var deleteDataStmt: Seq[Statement] = Seq[Statement]()
+
+      deleteDataRecords.foreach(ddr => {
+        val channelsToDelete = realTimeJobs.filter(rtj => rtj.input_channels.asScala.contains(ddr.channelId))
+                .map(rtj => rtj.output_channel) ++ Seq(ddr.channelId)
+
+        deleteDataStmt ++= process(channelsToDelete, ddr.startDate, ddr.endDate)
+      })
+
+      //println("delete data statements: ")
+      //deleteDataStmt.foreach(b => b.asInstanceOf[BatchStatement].getStatements.asScala.foreach(s => println(s.toString)))
+      Some(deleteDataStmt)
+    }
+    else
+      None
   }
 
   def process(channels: Seq[String], startDate: LocalDateTime, endDate: LocalDateTime): Option[Statement] ={
