@@ -1,7 +1,9 @@
 package carldata.dumper
 
+import java.time.ZoneOffset
+
 import carldata.hs.RealTime.RealTimeJsonProtocol._
-import carldata.hs.RealTime.{AddAction, ErrorAction, RealTimeJobRecord, RemoveAction}
+import carldata.hs.RealTime.{AddRealTimeJob, RealTimeJob, RemoveRealTimeJob}
 import com.datastax.driver.core.querybuilder.QueryBuilder
 import com.datastax.driver.core.{BatchStatement, Statement}
 import org.slf4j.LoggerFactory
@@ -21,29 +23,30 @@ object RealTimeProcessor {
     if (records.isEmpty) None
     else {
       val batch = new BatchStatement()
-      records.foreach(r => {
-        if (r.action == AddAction) {
+      records.foreach {
+        case AddRealTimeJob(calculationId, script, inputChannelIds, outputChannelId, startDate, endDate) =>
           val addJob = QueryBuilder.insertInto(TABLE_NAME)
-            .value("calculation", r.calculationId)
-            .value("script", r.script)
-            .value("input_channels", r.inputChannelIds.asJava)
-            .value("output_channel", r.outputChannelId)
+            .value("calculation", calculationId)
+            .value("script", script)
+            .value("input_channels", inputChannelIds.asJava)
+            .value("output_channel", outputChannelId)
+            .value("start_date",startDate.toInstant(ZoneOffset.UTC).toEpochMilli)
+            .value("end_date",endDate.toInstant(ZoneOffset.UTC).toEpochMilli)
           batch.add(addJob)
-        } else if (r.action == RemoveAction) {
+
+        case RemoveRealTimeJob(calculationId) =>
           val removeJob = QueryBuilder.delete().from(TABLE_NAME)
-            .where(QueryBuilder.eq("calculation", r.calculationId))
+            .where(QueryBuilder.eq("calculation", calculationId))
           batch.add(removeJob)
-        } else if (r.action == ErrorAction) {
-          Log.error("Error action occurred: " + r.toString)
-        }
-      })
+      }
       Some(batch)
     }
   }
 
-  def deserialize(job: String): Option[RealTimeJobRecord] = {
+
+  def deserialize(job: String): Option[RealTimeJob] = {
     try {
-      Some(JsonParser(job).convertTo[RealTimeJobRecord])
+      Some(JsonParser(job).convertTo[RealTimeJob])
     } catch {
       case _: ParsingException =>
         Log.error("Can't deserialize data record: " + job)

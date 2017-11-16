@@ -9,7 +9,7 @@ libraryDependencies ++= Seq(
   "com.datastax.cassandra" % "cassandra-driver-core" % "3.3.0",
   "org.slf4j" % "slf4j-api" % "1.7.25",
   "de.siegmar" % "logback-gelf" % "1.0.4",
-  "io.github.carldata" %% "hydra-streams" % "0.4.5",
+  "io.github.carldata" %% "hydra-streams" % "0.5.0",
   "com.datadoghq" % "java-dogstatsd-client" % "2.3",
   "ch.qos.logback" % "logback-classic" % "1.2.3" % Runtime,
 

@@ -122,7 +122,7 @@ object MainApp {
         if(deleteDataMessages.nonEmpty) {
           deleteDataStmt =  new DeleteDataProcessor(session).process(deleteDataMessages)
           println("delete data statements: ")
-          deleteDataStmt.foreach(b => b.asInstanceOf[BatchStatement].getStatements.asScala.foreach(s => println(s.toString)))
+          deleteDataStmt.foreach(b => println(b.toString))
         }
 
         if ((dataStmt ++ realTimeDataStmt ++ deleteDataStmt).forall(dbExecute)) {
