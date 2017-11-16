@@ -12,13 +12,13 @@ import spray.json.JsonParser.ParsingException
 
 import scala.collection.JavaConverters._
 
+case class RealTimeJob(inputChannels: Seq[String], outputChannel: String, startDate: Long, endDate: Long)
+
 class DeleteDataProcessor(val s: Session) {
 
   val session = s
   val TABLE_REAL_TIME = "real_time_jobs"
   val TABLE_NAME = "data"
-
-  case class RealTimeJob(inputChannels: Seq[String], outputChannel: String, startDate: Long, endDate: Long)
 
   case class ChannelToRemove(channel: String, startDate: Long, endDate: Long)
 
