@@ -7,7 +7,6 @@ scalaVersion := "2.12.4"
 libraryDependencies ++= Seq(
   "org.apache.kafka" % "kafka-clients" % "0.11.0.1",
   "com.datastax.cassandra" % "cassandra-driver-core" % "3.3.0",
-  "com.datastax.cassandra" % "cassandra-driver-mapping" % "3.3.1",
   "org.slf4j" % "slf4j-api" % "1.7.25",
   "de.siegmar" % "logback-gelf" % "1.0.4",
   "io.github.carldata" %% "hydra-streams" % "0.4.5",
