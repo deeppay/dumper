@@ -6,7 +6,6 @@ import carldata.hs.DeleteData.DeleteDataJsonProtocol._
 import carldata.hs.DeleteData.DeleteDataRecord
 import com.datastax.driver.core.querybuilder.QueryBuilder
 import com.datastax.driver.core.{BatchStatement, Session, Statement}
-import com.google.common.reflect.TypeToken
 import org.slf4j.LoggerFactory
 import spray.json.JsonParser
 import spray.json.JsonParser.ParsingException
@@ -21,6 +20,8 @@ class DeleteDataProcessor(val s: Session) {
   val TABLE_NAME = "data"
 
   case class RealTimeJob(inputChannels: Seq[String], outputChannel: String, startDate: Long, endDate: Long)
+
+  case class ChannelToRemove(channel: String, startDate: Long, endDate: Long)
 
   private val Log = LoggerFactory.getLogger(this.getClass)
 
@@ -71,30 +72,37 @@ class DeleteDataProcessor(val s: Session) {
       Seq[Statement]()
     else {
       val realTimeJobs = getRealTimeJobs()
-      records.map(r => buildDeleteStatements(r.channelId, r.startDate, r.endDate, realTimeJobs))
+      records.map(r => buildDeleteStatements(r.channelId, r.startDate.toInstant(ZoneOffset.UTC).toEpochMilli,
+        r.endDate.toInstant(ZoneOffset.UTC).toEpochMilli, realTimeJobs))
     }
-
   }
 
   def getRealTimeJobs(): Seq[RealTimeJob] = {
+
     session.execute(QueryBuilder.select().from(TABLE_REAL_TIME)).asScala
-      .map(row => RealTimeJob(row.getList[String]("input_channels", new TypeToken[String]() {}).asScala,
+      .map(row => RealTimeJob(row.getList[String]("input_channels", classOf[String]).asScala,
         row.getString("output"), 0, 0)).toSeq
+    //TODO uncomment when real time job has date range
+    //    session.execute(QueryBuilder.select().from(TABLE_REAL_TIME)).asScala
+    //      .map(row => RealTimeJob(row.getList[String]("input_channels", classOf[String]).asScala,
+    //        row.getString("output"), row.getDate("start_date").getMillisSinceEpoch, row.getDate("end_date").getMillisSinceEpoch)).toSeq
   }
 
-  def buildDeleteStatements(channelId: String, startDate: LocalDateTime, endDate: LocalDateTime,
-                            realTimeJobs: Seq[RealTimeJob]): Statement = {
+  def buildDeleteStatements(channelId: String, startDate: Long, endDate: Long, realTimeJobs: Seq[RealTimeJob]): Statement = {
 
-    val channelsToRemove = realTimeJobs.filter(rtj => rtj.inputChannels.contains(channelId)).map(rtj => rtj.outputChannel) ++
-      Seq(channelId)
+    val channelsToRemove = realTimeJobs.filter(rtj => rtj.inputChannels.contains(channelId))
+      .map(rtj => ChannelToRemove(rtj.outputChannel, rtj.startDate, rtj.endDate)) ++
+      Seq(ChannelToRemove(channelId, startDate, endDate))
 
     val batch = new BatchStatement()
 
     channelsToRemove.foreach { c =>
-      val deleteStmt = QueryBuilder.delete().from(TABLE_NAME).where(QueryBuilder.eq("channel", c))
-        .and(QueryBuilder.gte("timestamp", startDate.toInstant(ZoneOffset.UTC).toEpochMilli))
-        .and(QueryBuilder.lte("timestamp", endDate.toInstant(ZoneOffset.UTC).toEpochMilli))
-      batch.add(deleteStmt)
+      if( startDate <= c.endDate && endDate >= c.startDate) {
+        val deleteStmt = QueryBuilder.delete().from(TABLE_NAME).where(QueryBuilder.eq("channel", c.channel))
+          .and(QueryBuilder.gte("timestamp", if(startDate >= c.startDate) startDate else c.startDate))
+          .and(QueryBuilder.lte("timestamp", if(endDate <= c.endDate) endDate else c.endDate))
+        batch.add(deleteStmt)
+      }
     }
     batch
   }

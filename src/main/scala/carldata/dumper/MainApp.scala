@@ -125,6 +125,8 @@ object MainApp {
           //val realTimeJobs = dbQueryExecute(QueryBuilder.select().from("real_time_jobs"))
           deleteDataStmt =  new DeleteDataProcessor(session).process(deleteDataMessages)
           //deleteDataStmt = DeleteDataProcessor.processDeleteDataMessages(deleteDataMessages, realTimeJobs).toSeq.flatten
+          println("delete data statements: ")
+          deleteDataStmt.foreach(b => b.asInstanceOf[BatchStatement].getStatements.asScala.foreach(s => println(s.toString)))
         }
 
         if ((dataStmt ++ realTimeDataStmt ++ deleteDataStmt).forall(dbExecute)) {
