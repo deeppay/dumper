@@ -3,9 +3,7 @@ package carldata.dumper
 import java.net.InetAddress
 import java.util.Properties
 
-import com.datastax.driver.core.querybuilder.QueryBuilder
 import com.datastax.driver.core._
-import com.datastax.driver.mapping.{Mapper, MappingManager}
 import org.apache.kafka.clients.consumer.{CommitFailedException, ConsumerConfig, ConsumerRecords, KafkaConsumer}
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.slf4j.LoggerFactory
@@ -122,9 +120,7 @@ object MainApp {
 
         var deleteDataStmt = Seq[Statement]()
         if(deleteDataMessages.nonEmpty) {
-          //val realTimeJobs = dbQueryExecute(QueryBuilder.select().from("real_time_jobs"))
           deleteDataStmt =  new DeleteDataProcessor(session).process(deleteDataMessages)
-          //deleteDataStmt = DeleteDataProcessor.processDeleteDataMessages(deleteDataMessages, realTimeJobs).toSeq.flatten
           println("delete data statements: ")
           deleteDataStmt.foreach(b => b.asInstanceOf[BatchStatement].getStatements.asScala.foreach(s => println(s.toString)))
         }
@@ -133,16 +129,6 @@ object MainApp {
           consumer.commitSync()
           StatsD.increment("data.out.count", records.size)
         }
-
-//        if(deleteDataMessages.nonEmpty) {
-//          val realTimeJobs = dbQueryExecute(QueryBuilder.select().from("real_time_jobs"))
-//          deleteDataStmt = DeleteDataProcessor.processDeleteDataMessages(deleteDataMessages, realTimeJobs).toSeq.flatten
-//        }
-//
-//        if ((dataStmt ++ realTimeDataStmt ++ deleteDataStmt).forall(dbExecute)) {
-//          consumer.commitSync()
-//          StatsD.increment("data.out.count", records.size)
-//        }
       }
       catch {
         case e: CommitFailedException =>
@@ -171,20 +157,6 @@ object MainApp {
       case e: Exception =>
         Log.error(e.toString)
         false
-    }
-  }
-
-  def dbQueryExecutor(session: Session): Statement => Seq[RealTimeJobJava] = { stmt =>
-    try {
-      val manager = new MappingManager(session)
-      val mapper: Mapper[RealTimeJobJava] = manager.mapper[RealTimeJobJava](classOf[RealTimeJobJava])
-      val result = session.execute(stmt)
-      mapper.map(result).asScala.toSeq
-    }
-    catch {
-      case e: Exception =>
-        Log.error(e.toString)
-        Seq[RealTimeJobJava]()
     }
   }
 }

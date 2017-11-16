@@ -1,6 +1,6 @@
 package carldata.dumper
 
-import java.time.{LocalDateTime, ZoneOffset}
+import java.time.ZoneOffset
 
 import carldata.hs.DeleteData.DeleteDataJsonProtocol._
 import carldata.hs.DeleteData.DeleteDataRecord
@@ -11,7 +11,6 @@ import spray.json.JsonParser
 import spray.json.JsonParser.ParsingException
 
 import scala.collection.JavaConverters._
-
 
 class DeleteDataProcessor(val s: Session) {
 
@@ -24,43 +23,6 @@ class DeleteDataProcessor(val s: Session) {
   case class ChannelToRemove(channel: String, startDate: Long, endDate: Long)
 
   private val Log = LoggerFactory.getLogger(this.getClass)
-
-  def processDeleteDataMessages(messages: Seq[String], realTimeJobs: Seq[RealTimeJobJava]): Option[Seq[Statement]] = {
-    val deleteDataRecords = getDeleteRecords(messages)
-
-    if (deleteDataRecords.nonEmpty) {
-      var deleteDataStmt: Seq[Statement] = Seq[Statement]()
-
-      deleteDataRecords.foreach(ddr => {
-        val channelsToDelete = realTimeJobs.filter(rtj => rtj.input_channels.asScala.contains(ddr.channelId))
-          .map(rtj => rtj.output_channel) ++ Seq(ddr.channelId)
-
-        deleteDataStmt ++= process_old(channelsToDelete, ddr.startDate, ddr.endDate)
-      })
-
-      //println("delete data statements: ")
-      //deleteDataStmt.foreach(b => b.asInstanceOf[BatchStatement].getStatements.asScala.foreach(s => println(s.toString)))
-      Some(deleteDataStmt)
-    }
-    else
-      None
-  }
-
-  def process_old(channels: Seq[String], startDate: LocalDateTime, endDate: LocalDateTime): Option[Statement] = {
-    if (channels.isEmpty)
-      None
-    else {
-      val batch = new BatchStatement()
-
-      channels.foreach { c =>
-        val deleteStmt = QueryBuilder.delete().from(TABLE_NAME).where(QueryBuilder.eq("channel", c))
-          .and(QueryBuilder.gte("timestamp", startDate.toInstant(ZoneOffset.UTC).toEpochMilli))
-          .and(QueryBuilder.lte("timestamp", endDate.toInstant(ZoneOffset.UTC).toEpochMilli))
-        batch.add(deleteStmt)
-      }
-      Some(batch)
-    }
-  }
 
   def getDeleteRecords(messages: Seq[String]): Seq[DeleteDataRecord] = {
     messages.flatMap(deserialize)
@@ -81,8 +43,9 @@ class DeleteDataProcessor(val s: Session) {
 
     session.execute(QueryBuilder.select().from(TABLE_REAL_TIME)).asScala
       .map(row => RealTimeJob(row.getList[String]("input_channels", classOf[String]).asScala,
-        row.getString("output"), 0, 0)).toSeq
-    //TODO uncomment when real time job has date range
+        row.getString("output_channel"), 1507852800000L, 1507939200000L)).toSeq
+    //hardcoded start and end date correspond to test start date and end date in delete-data message
+    //TODO uncomment when real time job has date range than check if there are columns start_date and end_date
     //    session.execute(QueryBuilder.select().from(TABLE_REAL_TIME)).asScala
     //      .map(row => RealTimeJob(row.getList[String]("input_channels", classOf[String]).asScala,
     //        row.getString("output"), row.getDate("start_date").getMillisSinceEpoch, row.getDate("end_date").getMillisSinceEpoch)).toSeq
