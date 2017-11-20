@@ -15,13 +15,17 @@ class DeleteDataProcessorTest extends FlatSpec with Matchers {
     val dateFrom = LocalDateTime.of(2017, 10, 13, 0, 0, 0)
     val dateTo = LocalDateTime.of(2017, 10, 14, 0, 0, 0)
 
-    val records = Seq[String](DeleteDataRecord("actionId","channel 1",dateFrom,dateTo).toJson.prettyPrint)
+    val records = Seq[String](DeleteDataRecord("actionId", "channel 1", dateFrom, dateTo).toJson.prettyPrint)
 
-    val realTimeJobs = 1.to(2).map(i =>  RealTimeInfo(Seq("fake", "channel " + i), "output " + i, dateFrom.toInstant(ZoneOffset.UTC).toEpochMilli,
-      dateTo.toInstant(ZoneOffset.UTC).toEpochMilli)).toList
+    val realTimeJobs = List(
+      RealTimeInfo(Seq("fake", "channel " + 1), "output " + 1, dateFrom.toInstant(ZoneOffset.UTC).toEpochMilli,
+        dateTo.toInstant(ZoneOffset.UTC).toEpochMilli),
+      RealTimeInfo(Seq("fake", "channel " + 2), "output " + 2, dateFrom.toInstant(ZoneOffset.UTC).toEpochMilli,
+        dateTo.toInstant(ZoneOffset.UTC).toEpochMilli),
+    )
 
     val deleteDataProcessor = new DeleteDataProcessor(null)
-    val deleteStmt = deleteDataProcessor.processMessages(records,realTimeJobs)
+    val deleteStmt = deleteDataProcessor.processMessages(records, realTimeJobs)
 
     val expected = List(
       "DELETE FROM data WHERE channel='channel 1' AND timestamp>=1507852800000 AND timestamp<=1507939200000;",
@@ -31,4 +35,14 @@ class DeleteDataProcessorTest extends FlatSpec with Matchers {
     val result = deleteStmt.map(_.toString).toList
     result shouldBe expected
   }
+
+  it should "return empty sequence for empty messages and empty real time jobs" in {
+
+    val records = Seq[String]()
+    val realTimeJobs = List[RealTimeInfo]()
+
+    val result =  new DeleteDataProcessor(null).processMessages(records,realTimeJobs)
+    result.isEmpty shouldBe true
+  }
+
 }

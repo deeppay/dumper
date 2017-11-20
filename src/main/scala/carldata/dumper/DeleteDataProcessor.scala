@@ -47,7 +47,7 @@ class DeleteDataProcessor(session: Session) {
   def getRealTimeJobs: List[RealTimeInfo] = {
     session.execute(QueryBuilder.select().from(TABLE_REAL_TIME)).asScala
       .map(row => RealTimeInfo(row.getList[String]("input_channels", classOf[String]).asScala,
-        row.getString("output"), row.getDate("start_date").getMillisSinceEpoch, row.getDate("end_date").getMillisSinceEpoch)).toList
+        row.getString("output_channel"), row.getTimestamp("start_date").getTime, row.getTimestamp("end_date").getTime)).toList
   }
 
   def channelsToRemove(channelId: String, realTimeJobs: List[RealTimeInfo]): List[ChannelRange] = {

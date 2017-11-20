@@ -117,13 +117,7 @@ object MainApp {
 
         //getting info about RealTimeJobs and channels to delete
         val deleteDataMessages = getTopicMessages(batch, prefix + DELETE_DATA_TOPIC)
-
-        var deleteDataStmt = Seq[Statement]()
-        if(deleteDataMessages.nonEmpty) {
-          deleteDataStmt =  new DeleteDataProcessor(session).process(deleteDataMessages)
-          println("delete data statements: ")
-          deleteDataStmt.foreach(b => println(b.toString))
-        }
+        val deleteDataStmt = new DeleteDataProcessor(session).process(deleteDataMessages)
 
         if ((dataStmt ++ realTimeDataStmt ++ deleteDataStmt).forall(dbExecute)) {
           consumer.commitSync()
