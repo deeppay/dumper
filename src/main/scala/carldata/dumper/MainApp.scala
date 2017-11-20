@@ -88,7 +88,6 @@ object MainApp {
     val params = parseArgs(args)
     StatsD.init("dumper", params.statsDHost)
     val session = initDB(params)
-    //val manager = new MappingManager(session)
     Log.info("Application started")
     run(params.kafkaBroker, params.prefix, dbExecutor(session), session)
     Log.info("Application Stopped")
@@ -115,7 +114,6 @@ object MainApp {
         val realTimeMessages = getTopicMessages(batch, prefix + REAL_TIME_TOPIC)
         val realTimeDataStmt = RealTimeProcessor.process(realTimeMessages)
 
-        //getting info about RealTimeJobs and channels to delete
         val deleteDataMessages = getTopicMessages(batch, prefix + DELETE_DATA_TOPIC)
         val deleteDataStmt = new DeleteDataProcessor(session).process(deleteDataMessages)
 
