@@ -3,7 +3,7 @@ package carldata.dumper
 import java.net.InetAddress
 import java.util.Properties
 
-import com.datastax.driver.core.{Cluster, Session, Statement}
+import com.datastax.driver.core._
 import org.apache.kafka.clients.consumer.{CommitFailedException, ConsumerConfig, ConsumerRecords, KafkaConsumer}
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.slf4j.LoggerFactory
@@ -26,6 +26,8 @@ object MainApp {
   val DATA_TOPIC = "data"
   /** Real time topic name */
   val REAL_TIME_TOPIC = "hydra-rt"
+  /** Delete data topic */
+  val DELETE_DATA_TOPIC = "delete-data"
 
   private val Log = LoggerFactory.getLogger(MainApp.getClass.getName)
 
@@ -87,7 +89,7 @@ object MainApp {
     StatsD.init("dumper", params.statsDHost)
     val session = initDB(params)
     Log.info("Application started")
-    run(params.kafkaBroker, params.prefix, dbExecutor(session))
+    run(params.kafkaBroker, params.prefix, dbExecutor(session), session)
     Log.info("Application Stopped")
   }
 
@@ -98,10 +100,10 @@ object MainApp {
     *    - Create db statement
     *    - Execute statement on db
     */
-  def run(kafkaBroker: String, prefix: String, dbExecute: Statement => Boolean): Unit = {
+  def run(kafkaBroker: String, prefix: String, dbExecute: Statement => Boolean, session: Session): Unit = {
     val kafkaConfig = buildConfig(kafkaBroker)
     val consumer = new KafkaConsumer[String, String](kafkaConfig)
-    consumer.subscribe(List(prefix + DATA_TOPIC,prefix + REAL_TIME_TOPIC).asJava)
+    consumer.subscribe(List(DATA_TOPIC, REAL_TIME_TOPIC, DELETE_DATA_TOPIC).map(t => prefix + t).asJava)
 
     while (true) {
       try {
@@ -109,10 +111,13 @@ object MainApp {
         val records = getTopicMessages(batch, prefix + DATA_TOPIC)
         val dataStmt = DataProcessor.process(records)
 
-        val realTimeRecords = getTopicMessages(batch, prefix + REAL_TIME_TOPIC)
-        val realTimeDataStmt = RealTimeProcessor.process(realTimeRecords)
+        val realTimeMessages = getTopicMessages(batch, prefix + REAL_TIME_TOPIC)
+        val realTimeDataStmt = RealTimeProcessor.process(realTimeMessages)
 
-        if ( (dataStmt ++ realTimeDataStmt).forall(dbExecute)) {
+        val deleteDataMessages = getTopicMessages(batch, prefix + DELETE_DATA_TOPIC)
+        val deleteDataStmt = new DeleteDataProcessor(session).process(deleteDataMessages)
+
+        if ((dataStmt ++ realTimeDataStmt ++ deleteDataStmt).forall(dbExecute)) {
           consumer.commitSync()
           StatsD.increment("data.out.count", records.size)
         }
