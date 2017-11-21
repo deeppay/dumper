@@ -35,14 +35,16 @@ class DeleteDataProcessor(session: Session) {
   }
 
   def processMessages(messages: Seq[String], realTimeJobs: List[RealTimeInfo]): Seq[Statement] = {
-    StatsD.increment("delete_data",messages.size)
-    messages.flatMap(deserialize)
+    val result = messages.flatMap(deserialize)
       .flatMap { dr =>
         ChannelRange(dr.channelId, asMillis(dr.startDate), asMillis(dr.endDate)) ::
           channelsToRemove(dr.channelId, realTimeJobs)
             .map(ctr => trimChannelRange(ctr, asMillis(dr.startDate), asMillis(dr.endDate)))
             .filter(ctr => ctr.startDate <= ctr.endDate)
       }.map(buildDeleteStatement)
+    if (result.nonEmpty)
+      StatsD.increment("delete_data", messages.size)
+    result
   }
 
   def getRealTimeJobs: List[RealTimeInfo] = {
