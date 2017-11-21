@@ -42,8 +42,7 @@ class DeleteDataProcessor(session: Session) {
             .map(ctr => trimChannelRange(ctr, asMillis(dr.startDate), asMillis(dr.endDate)))
             .filter(ctr => ctr.startDate <= ctr.endDate)
       }.map(buildDeleteStatement)
-    if (result.nonEmpty)
-      StatsD.increment("delete_data", messages.size)
+      StatsD.increment("delete_data", result.size)
     result
   }
 
