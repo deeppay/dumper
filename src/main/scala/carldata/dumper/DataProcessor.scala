@@ -21,6 +21,7 @@ object DataProcessor {
 
   /** Convert data records into SQL Cassandra command */
   def process(messages: Seq[String]): Option[Statement] = {
+    StatsD.increment("data.out.count", messages.size)
     val records = messages.flatMap(deserialize)
     if (records.isEmpty) None
     else {

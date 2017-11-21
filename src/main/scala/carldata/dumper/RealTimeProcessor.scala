@@ -19,6 +19,7 @@ object RealTimeProcessor {
   private val Log = LoggerFactory.getLogger(this.getClass)
 
   def process(messages: Seq[String]): Option[Statement] = {
+    StatsD.increment("rtj",messages.size)
     val records = messages.flatMap(deserialize)
     if (records.isEmpty) None
     else {

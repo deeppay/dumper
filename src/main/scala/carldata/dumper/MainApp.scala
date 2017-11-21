@@ -119,7 +119,6 @@ object MainApp {
 
         if ((dataStmt ++ realTimeDataStmt ++ deleteDataStmt).forall(dbExecute)) {
           consumer.commitSync()
-          StatsD.increment("data.out.count", records.size)
         }
       }
       catch {

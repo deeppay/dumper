@@ -35,6 +35,7 @@ class DeleteDataProcessor(session: Session) {
   }
 
   def processMessages(messages: Seq[String], realTimeJobs: List[RealTimeInfo]): Seq[Statement] = {
+    StatsD.increment("delete_data",messages.size)
     messages.flatMap(deserialize)
       .flatMap { dr =>
         ChannelRange(dr.channelId, asMillis(dr.startDate), asMillis(dr.endDate)) ::
