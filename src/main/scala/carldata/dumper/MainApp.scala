@@ -47,8 +47,8 @@ object MainApp {
     val pass = stringArg(args, "pass", "")
     val keyspace = stringArg(args, "keyspace", "production")
     val cassandraUrls = stringArg(args, "db", "localhost").split(",").map(InetAddress.getByName)
-    val cassandraPort = stringArg(args, "dbPort", "9042").toInt
-    val statsDHost = stringArg(args, "statsDHost", "none")
+    val cassandraPort = stringArg(args, "db-port", "9042").toInt
+    val statsDHost = stringArg(args, "statsd-host", "none")
     Params(kafka, prefix, keyspace, cassandraUrls, cassandraPort, user, pass, statsDHost)
   }
 
