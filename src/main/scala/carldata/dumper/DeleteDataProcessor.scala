@@ -30,8 +30,11 @@ class DeleteDataProcessor(session: Session) {
   case class ChannelRange(channel: String, startDate: Long, endDate: Long)
 
   def process(messages: Seq[String]): Seq[Statement] = {
-    val realTimeJobs = getRealTimeJobs
-    processMessages(messages, realTimeJobs)
+    if(messages.nonEmpty) {
+      val realTimeJobs = getRealTimeJobs
+      processMessages(messages, realTimeJobs)
+    } else
+      Seq[Statement]()
   }
 
   def processMessages(messages: Seq[String], realTimeJobs: List[RealTimeInfo]): Seq[Statement] = {
