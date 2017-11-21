@@ -32,6 +32,7 @@ object DataProcessor {
           .value("value", m.value)
         batch.add(insert)
       }
+      StatsD.increment("data.out.count", messages.size)
       Some(batch)
     }
   }

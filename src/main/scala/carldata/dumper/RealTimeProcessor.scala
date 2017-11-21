@@ -39,6 +39,7 @@ object RealTimeProcessor {
             .where(QueryBuilder.eq("calculation", calculationId))
           batch.add(removeJob)
       }
+      StatsD.increment("rtj",messages.size)
       Some(batch)
     }
   }
